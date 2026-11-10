@@ -12,6 +12,9 @@
 
 # testing
 /coverage
+/.tsupgrader/
+*.csv
+*.xlsx
 
 # next.js
 /.next/
