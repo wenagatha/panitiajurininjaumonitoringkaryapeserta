@@ -1,11 +1,11 @@
 import PemenangKategori from "@/components/pemenang/PemenangKategori";
-import { getPeringkatByKategori } from "@/lib/peringkat";
+import { getKaryaPesertaRingkasByKategori } from "@/lib/data-contoh";
 
 export default function PanitiaPemenangCeritaPage() {
   return (
     <PemenangKategori
       kategori="cerita"
-      items={getPeringkatByKategori("cerita")}
+      items={getKaryaPesertaRingkasByKategori("cerita")}
     />
   );
 }

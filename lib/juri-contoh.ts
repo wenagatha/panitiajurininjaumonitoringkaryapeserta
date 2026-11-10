@@ -13,5 +13,3 @@ export const JURI_CONTOH: readonly JuriContoh[] = [
   { id: "juri-komik-a", nama: "Juri Komik A", kategori: "komik" },
   { id: "juri-komik-b", nama: "Juri Komik B", kategori: "komik" },
 ];
-
-export const JURI_AKTIF = JURI_CONTOH[0];

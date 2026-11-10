@@ -7,9 +7,10 @@ import {
 } from "@/lib/aturan-lomba";
 import { JURI_CONTOH, type JuriContoh } from "@/lib/juri-contoh";
 import { karyaContoh, pesertaContoh } from "@/lib/data-contoh";
+import { readReviewStatuses } from "@/lib/review-status";
 import type { KategoriLomba } from "@/types/karya";
 
-export const STATE_JURI_STORAGE_KEY = "monitoring-karya-state-juri";
+export const STATE_JURI_STORAGE_KEY = "monitoring-karya-state-juri-v2";
 const STATE_JURI_EVENT = "monitoring-karya-state-juri-change";
 // TODO: ganti dengan tabel tinjauan_juri dan pilihan_juri di Supabase (Realtime Presence untuk "sedang ditinjau").
 
@@ -32,17 +33,23 @@ export type PeringkatJuri = {
 
 export type RiwayatJuri = {
   id: string;
-  jenis: string;
+  jenis:
+    | "jadikan-kandidat"
+    | "batalkan-kandidat"
+    | "tetapkan-peringkat"
+    | "pindah-peringkat"
+    | "hapus-peringkat";
   karyaId: string;
   juriId: string;
   nilaiLama: string | null;
   nilaiBaru: string | null;
   waktu: string;
+  catatan?: string | null;
 };
 
 export type StateJuri = {
   tinjauan: Record<string, TinjauanJuri>;
-  pilihanKandidat: Record<string, PilihanKandidatJuri | null>;
+  pilihanKandidat: Record<string, PilihanKandidatJuri>;
   peringkat: Record<string, PeringkatJuri>;
   riwayat: RiwayatJuri[];
 };
@@ -52,24 +59,43 @@ export type StateJuriSnapshot = {
   error: string;
 };
 
-type StatusTinjauan = "belum" | "sedang" | "sudah";
+export type KandidatKategori = {
+  karyaId: string;
+  juriIds: string[];
+  ditandaiPada: string;
+};
+
+export type PeringkatKategori = {
+  karyaId: string;
+  peringkat: number;
+  ditetapkanOleh: string;
+  ditetapkanPada: string;
+};
+
+export type StatusTinjauanJuri = "belum" | "sedang" | "sudah";
 
 function kunci(karyaId: string, juriId: string): string {
   return `${karyaId}|${juriId}`;
 }
 
 function getDefaultState(): StateJuri {
+  const tinjauan: StateJuri["tinjauan"] = {};
   const pilihanKandidat: StateJuri["pilihanKandidat"] = {};
   const peringkat: StateJuri["peringkat"] = {};
   const juriByName = new Map(JURI_CONTOH.map((juri) => [juri.nama, juri]));
 
   for (const karya of karyaContoh) {
-    if (karya.tahap === "kandidat") {
+    if (karya.tahap === "kandidat" && karya.status === "diverifikasi") {
       for (const namaJuri of karya.dipilihOleh) {
         const juri = juriByName.get(namaJuri);
         if (juri) {
-          pilihanKandidat[kunci(karya.id, juri.id)] = {
-            ditandaiPada: karya.ditandaiPada,
+          const id = kunci(karya.id, juri.id);
+          pilihanKandidat[id] = { ditandaiPada: karya.ditandaiPada };
+          tinjauan[id] = {
+            status: "sudah",
+            mulaiPada: karya.ditandaiPada,
+            terakhirAktif: karya.ditandaiPada,
+            selesaiPada: karya.ditandaiPada,
           };
         }
       }
@@ -88,12 +114,12 @@ function getDefaultState(): StateJuri {
     }
   }
 
-  return { tinjauan: {}, pilihanKandidat, peringkat, riwayat: [] };
+  return { tinjauan, pilihanKandidat, peringkat, riwayat: [] };
 }
 
 const DEFAULT_STATE = getDefaultState();
 const DEFAULT_SNAPSHOT: StateJuriSnapshot = {
-  state: DEFAULT_STATE,
+  state: structuredClone(DEFAULT_STATE),
   error: "",
 };
 let cachedSnapshot: StateJuriSnapshot = DEFAULT_SNAPSHOT;
@@ -109,9 +135,29 @@ function isIsoDate(value: unknown): value is string {
   return typeof value === "string" && Number.isFinite(Date.parse(value));
 }
 
+function isHistoryValue(value: unknown): value is string | null {
+  return (
+    value === null ||
+    value === "kandidat" ||
+    (typeof value === "string" && /^\d+$/.test(value))
+  );
+}
+
+function isHistoryType(
+  value: unknown,
+): value is RiwayatJuri["jenis"] {
+  return (
+    value === "jadikan-kandidat" ||
+    value === "batalkan-kandidat" ||
+    value === "tetapkan-peringkat" ||
+    value === "pindah-peringkat" ||
+    value === "hapus-peringkat"
+  );
+}
+
 function parseState(raw: string | null): StateJuri {
-  if (!raw) {
-    return DEFAULT_STATE;
+  if (raw === null) {
+    return structuredClone(DEFAULT_STATE);
   }
 
   const parsed: unknown = JSON.parse(raw);
@@ -146,17 +192,15 @@ function parseState(raw: string | null): StateJuri {
       selesaiPada: review.selesaiPada,
     };
   }
+
   const pilihanKandidat: StateJuri["pilihanKandidat"] = {};
   for (const [id, choice] of Object.entries(parsed.pilihanKandidat)) {
-    if (choice === null) {
-      pilihanKandidat[id] = null;
-    } else {
-      if (!isRecord(choice) || !isIsoDate(choice.ditandaiPada)) {
-        throw new Error("Data pilihan kandidat juri di browser tidak valid.");
-      }
-      pilihanKandidat[id] = { ditandaiPada: choice.ditandaiPada };
+    if (!isRecord(choice) || !isIsoDate(choice.ditandaiPada)) {
+      throw new Error("Data pilihan kandidat juri di browser tidak valid.");
     }
+    pilihanKandidat[id] = { ditandaiPada: choice.ditandaiPada };
   }
+
   const peringkat: StateJuri["peringkat"] = {};
   for (const [id, rank] of Object.entries(parsed.peringkat)) {
     if (
@@ -174,16 +218,20 @@ function parseState(raw: string | null): StateJuri {
       ditetapkanPada: rank.ditetapkanPada,
     };
   }
-  const riwayat: StateJuri["riwayat"] = [];
+
+  const riwayat: RiwayatJuri[] = [];
   for (const entry of parsed.riwayat) {
     if (
       !isRecord(entry) ||
       typeof entry.id !== "string" ||
-      typeof entry.jenis !== "string" ||
+      !isHistoryType(entry.jenis) ||
       typeof entry.karyaId !== "string" ||
       typeof entry.juriId !== "string" ||
-      (entry.nilaiLama !== null && typeof entry.nilaiLama !== "string") ||
-      (entry.nilaiBaru !== null && typeof entry.nilaiBaru !== "string") ||
+      !isHistoryValue(entry.nilaiLama) ||
+      !isHistoryValue(entry.nilaiBaru) ||
+      (entry.catatan !== undefined &&
+        entry.catatan !== null &&
+        typeof entry.catatan !== "string") ||
       !isIsoDate(entry.waktu)
     ) {
       throw new Error("Data riwayat aksi juri di browser tidak valid.");
@@ -196,18 +244,11 @@ function parseState(raw: string | null): StateJuri {
       nilaiLama: entry.nilaiLama,
       nilaiBaru: entry.nilaiBaru,
       waktu: entry.waktu,
+      ...(entry.catatan !== undefined ? { catatan: entry.catatan } : {}),
     });
   }
 
-  return {
-    tinjauan,
-    pilihanKandidat: {
-      ...DEFAULT_STATE.pilihanKandidat,
-      ...pilihanKandidat,
-    },
-    peringkat: { ...DEFAULT_STATE.peringkat, ...peringkat },
-    riwayat,
-  };
+  return { tinjauan, pilihanKandidat, peringkat, riwayat };
 }
 
 function emitChange() {
@@ -219,21 +260,25 @@ function getSnapshot(): StateJuriSnapshot {
     return DEFAULT_SNAPSHOT;
   }
 
+  let raw: string | null | undefined;
   try {
-    const raw = window.localStorage.getItem(STATE_JURI_STORAGE_KEY);
-    if (raw === cachedRaw && !cachedSnapshot.error) {
+    raw = window.localStorage.getItem(STATE_JURI_STORAGE_KEY);
+    if (raw === cachedRaw) {
       return cachedSnapshot;
     }
     cachedSnapshot = { state: parseState(raw), error: "" };
     cachedRaw = raw;
   } catch (cause) {
-    cachedSnapshot = {
-      state: cachedSnapshot.state,
-      error:
-        cause instanceof Error
-          ? `Aksi juri gagal dibaca: ${cause.message}`
-          : "Aksi juri gagal dibaca dari penyimpanan browser.",
-    };
+    const error =
+      cause instanceof Error
+        ? `Aksi juri gagal dibaca: ${cause.message}`
+        : "Aksi juri gagal dibaca dari penyimpanan browser.";
+    if (cachedSnapshot.error !== error) {
+      cachedSnapshot = { state: cachedSnapshot.state, error };
+    }
+    if (raw !== undefined) {
+      cachedRaw = raw;
+    }
   }
   return cachedSnapshot;
 }
@@ -280,7 +325,7 @@ function writeState(state: StateJuri): void {
     const raw = JSON.stringify(state);
     window.localStorage.setItem(STATE_JURI_STORAGE_KEY, raw);
     cachedRaw = raw;
-    cachedSnapshot = { state, error: "" };
+    cachedSnapshot = { state: structuredClone(state), error: "" };
     emitChange();
   } catch (cause) {
     throw new Error(
@@ -291,14 +336,15 @@ function writeState(state: StateJuri): void {
   }
 }
 
-function recordChange(
+function recordDecision(
   state: StateJuri,
-  jenis: string,
+  jenis: RiwayatJuri["jenis"],
   karyaId: string,
   juriId: string,
   nilaiLama: string | null,
   nilaiBaru: string | null,
   waktu: string,
+  catatan?: string | null,
 ) {
   state.riwayat.push({
     id: `${waktu}-${state.riwayat.length + 1}`,
@@ -308,6 +354,7 @@ function recordChange(
     nilaiLama,
     nilaiBaru,
     waktu,
+    ...(catatan !== undefined ? { catatan } : {}),
   });
 }
 
@@ -318,7 +365,7 @@ export function useStateJuri(): StateJuriSnapshot {
 export function statusTinjauanJuri(
   karyaId: string,
   juriId: string,
-): StatusTinjauan {
+): StatusTinjauanJuri {
   const review = getSnapshot().state.tinjauan[kunci(karyaId, juriId)];
   if (!review) {
     return "belum";
@@ -348,37 +395,195 @@ function pilihanAktif(
   karyaId: string,
   juriId: string,
 ): PilihanKandidatJuri | undefined {
-  const id = kunci(karyaId, juriId);
-  if (Object.prototype.hasOwnProperty.call(state.pilihanKandidat, id)) {
-    return state.pilihanKandidat[id] ?? undefined;
-  }
-  return DEFAULT_STATE.pilihanKandidat[id] ?? undefined;
+  return state.pilihanKandidat[kunci(karyaId, juriId)];
 }
 
-export function daftarJuriKandidat(karyaId: string): JuriContoh[] {
-  const state = getSnapshot().state;
+export function daftarJuriKandidat(
+  karyaId: string,
+  state: StateJuri,
+): JuriContoh[] {
   return JURI_CONTOH.filter((juri) =>
     pilihanAktif(state, karyaId, juri.id),
   );
 }
 
-export function jumlahKandidatKategori(kategori: KategoriLomba): number {
+export function jumlahKandidatKategori(
+  kategori: KategoriLomba,
+  state: StateJuri,
+): number {
+  return getKandidatKategori(kategori, state).length;
+}
+
+export function getKandidatKategori(
+  kategori: KategoriLomba,
+  state: StateJuri,
+): KandidatKategori[] {
   const pesertaById = new Map(
     pesertaContoh.map((peserta) => [peserta.id, peserta]),
   );
-  const state = getSnapshot().state;
-  const kandidatIds = new Set<string>();
 
-  for (const karya of karyaContoh) {
-    const peserta = pesertaById.get(karya.pesertaId);
-    if (
-      peserta?.kategori === kategori &&
-      JURI_CONTOH.some((juri) => pilihanAktif(state, karya.id, juri.id))
-    ) {
-      kandidatIds.add(karya.id);
+  return karyaContoh
+    .flatMap((karya) => {
+      const peserta = pesertaById.get(karya.pesertaId);
+      if (!peserta || peserta.kategori !== kategori) {
+        return [];
+      }
+      const juriPilihan = JURI_CONTOH.flatMap((juri) => {
+        const pilihan = pilihanAktif(state, karya.id, juri.id);
+        return pilihan ? [{ juriId: juri.id, pilihan }] : [];
+      });
+      if (juriPilihan.length === 0) {
+        return [];
+      }
+      const ditandaiPada = juriPilihan
+        .map(({ pilihan }) => pilihan.ditandaiPada)
+        .sort((first, second) => Date.parse(first) - Date.parse(second))[0];
+      return [
+        {
+          karyaId: karya.id,
+          juriIds: juriPilihan.map(({ juriId }) => juriId),
+          ditandaiPada,
+        },
+      ];
+    })
+    .sort(
+      (first, second) =>
+        Date.parse(first.ditandaiPada) - Date.parse(second.ditandaiPada),
+    );
+}
+
+export function getPeringkatKategori(
+  kategori: KategoriLomba,
+  state: StateJuri,
+): PeringkatKategori[] {
+  const pesertaById = new Map(
+    pesertaContoh.map((peserta) => [peserta.id, peserta]),
+  );
+  const karyaById = new Map(karyaContoh.map((karya) => [karya.id, karya]));
+  const ranks = new Set<number>();
+  const result: PeringkatKategori[] = [];
+
+  for (const [karyaId, rank] of Object.entries(state.peringkat)) {
+    const karya = karyaById.get(karyaId);
+    const peserta = karya ? pesertaById.get(karya.pesertaId) : undefined;
+    if (!karya || !peserta || peserta.kategori !== kategori) {
+      continue;
+    }
+    if (process.env.NODE_ENV === "development") {
+      if (
+        karya.status !== "diverifikasi" ||
+        !JURI_CONTOH.some((juri) => pilihanAktif(state, karyaId, juri.id))
+      ) {
+        throw new Error(
+          `Karya ${karyaId} memiliki peringkat tetapi bukan kandidat terverifikasi.`,
+        );
+      }
+      if (ranks.has(rank.peringkat)) {
+        throw new Error(
+          `Peringkat ${rank.peringkat} digunakan lebih dari satu karya pada kategori ${kategori}.`,
+        );
+      }
+    }
+    ranks.add(rank.peringkat);
+    result.push({ karyaId, ...rank });
+  }
+
+  return result
+    .filter((rank) => rank.peringkat <= ATURAN_LOMBA[kategori].jumlahPeringkat)
+    .sort((first, second) => first.peringkat - second.peringkat);
+}
+
+function getKaryaAndKategori(karyaId: string) {
+  const karya = karyaContoh.find((entry) => entry.id === karyaId);
+  const peserta = karya
+    ? pesertaByIdForJuri.get(karya.pesertaId)
+    : undefined;
+  return karya && peserta ? { karya, peserta } : undefined;
+}
+
+function getJudgeInCategory(
+  karyaId: string,
+  juriId: string,
+): { kategori: KategoriLomba } {
+  const juri = JURI_CONTOH.find((entry) => entry.id === juriId);
+  const data = getKaryaAndKategori(karyaId);
+  if (!juri || !data || juri.kategori !== data.peserta.kategori) {
+    throw new Error("Karya dan juri harus berasal dari kategori yang sama.");
+  }
+  return { kategori: juri.kategori };
+}
+
+function selectedJudgesInCategory(
+  state: StateJuri,
+  karyaId: string,
+  kategori: KategoriLomba,
+): JuriContoh[] {
+  return JURI_CONTOH.filter(
+    (juri) =>
+      juri.kategori === kategori && Boolean(pilihanAktif(state, karyaId, juri.id)),
+  );
+}
+
+function findRankOccupant(
+  state: StateJuri,
+  kategori: KategoriLomba,
+  peringkat: number,
+): string | undefined {
+  const found: string[] = [];
+  for (const [karyaId, rank] of Object.entries(state.peringkat)) {
+    const data = getKaryaAndKategori(karyaId);
+    if (data?.peserta.kategori === kategori && rank.peringkat === peringkat) {
+      found.push(karyaId);
     }
   }
-  return kandidatIds.size;
+  if (found.length > 1) {
+    throw new Error(`Peringkat ${peringkat} digunakan oleh lebih dari satu karya.`);
+  }
+  return found[0];
+}
+
+export function penghuniPeringkat(
+  kategori: KategoriLomba,
+  peringkat: number,
+): string | undefined {
+  return findRankOccupant(getSnapshot().state, kategori, peringkat);
+}
+
+export function peringkatKarya(karyaId: string): number | undefined {
+  return getSnapshot().state.peringkat[karyaId]?.peringkat;
+}
+
+export function akanKehilanganPeringkat(
+  karyaId: string,
+  juriId: string,
+): number | null {
+  const state = getSnapshot().state;
+  const pilihanAktifJuri = pilihanAktif(state, karyaId, juriId);
+  const rank = state.peringkat[karyaId]?.peringkat;
+  const juri = JURI_CONTOH.find((entry) => entry.id === juriId);
+  const data = getKaryaAndKategori(karyaId);
+  if (
+    !pilihanAktifJuri ||
+    rank === undefined ||
+    !juri ||
+    !data ||
+    juri.kategori !== data.peserta.kategori
+  ) {
+    return null;
+  }
+  const remaining = selectedJudgesInCategory(state, karyaId, juri.kategori)
+    .some((juriPemilih) => juriPemilih.id !== juriId);
+  return remaining ? null : rank;
+}
+
+export function useKandidatKategori(kategori: KategoriLomba) {
+  const { state, error } = useStateJuri();
+  return { kandidat: getKandidatKategori(kategori, state), error };
+}
+
+export function usePeringkatKategori(kategori: KategoriLomba) {
+  const { state, error } = useStateJuri();
+  return { peringkat: getPeringkatKategori(kategori, state), error };
 }
 
 function kategoriKarya(karyaId: string, juriId: string): KategoriLomba {
@@ -390,7 +595,9 @@ function kategoriKarya(karyaId: string, juriId: string): KategoriLomba {
   if (!juri || !karya || !peserta || juri.kategori !== peserta.kategori) {
     throw new Error("Karya atau juri tidak sesuai dengan kategori.");
   }
-  if (karya.status !== "diverifikasi") {
+  if (
+    (readReviewStatuses()[karyaId] ?? karya.status) !== "diverifikasi"
+  ) {
     throw new Error("Juri hanya dapat menandai karya yang sudah diverifikasi.");
   }
   return peserta.kategori;
@@ -409,22 +616,16 @@ export function mulaiTinjau(karyaId: string, juriId: string): void {
     return;
   }
   const now = new Date().toISOString();
-  const wasActive = statusTinjauanJuri(karyaId, juriId) === "sedang";
+  const stillActive =
+    current?.status === "sedang" &&
+    Date.now() - Date.parse(current.terakhirAktif) <=
+      BATAS_AKTIF_MENIT * 60_000;
   state.tinjauan[id] = {
     status: "sedang",
-    mulaiPada: wasActive ? current?.mulaiPada ?? now : now,
+    mulaiPada: stillActive ? current.mulaiPada : now,
     terakhirAktif: now,
     selesaiPada: null,
   };
-  recordChange(
-    state,
-    "mulai-tinjau",
-    karyaId,
-    juriId,
-    wasActive ? "sedang" : "belum",
-    "sedang",
-    now,
-  );
   writeState(state);
 }
 
@@ -434,26 +635,25 @@ export function kirimDetak(karyaId: string, juriId: string): void {
   const current = state.tinjauan[id];
   if (
     current?.status !== "sedang" ||
-    statusTinjauanJuri(karyaId, juriId) !== "sedang"
+    Date.now() - Date.parse(current.terakhirAktif) >
+      BATAS_AKTIF_MENIT * 60_000
   ) {
     return;
   }
-  const now = new Date().toISOString();
-  state.tinjauan[id] = { ...current, terakhirAktif: now };
-  recordChange(state, "kirim-detak", karyaId, juriId, "sedang", "sedang", now);
+  state.tinjauan[id] = {
+    ...current,
+    terakhirAktif: new Date().toISOString(),
+  };
   writeState(state);
 }
 
 export function akhiriTinjau(karyaId: string, juriId: string): void {
   const state = readState();
   const id = kunci(karyaId, juriId);
-  const current = state.tinjauan[id];
-  if (current?.status !== "sedang") {
+  if (state.tinjauan[id]?.status !== "sedang") {
     return;
   }
-  const now = new Date().toISOString();
   delete state.tinjauan[id];
-  recordChange(state, "akhiri-tinjau", karyaId, juriId, "sedang", "belum", now);
   writeState(state);
 }
 
@@ -472,28 +672,16 @@ export function tandaiSudahDitinjau(karyaId: string, juriId: string): void {
     terakhirAktif: now,
     selesaiPada: now,
   };
-  recordChange(
-    state,
-    "tandai-sudah-ditinjau",
-    karyaId,
-    juriId,
-    current?.status ?? "belum",
-    "sudah",
-    now,
-  );
   writeState(state);
 }
 
 export function batalkanSudahDitinjau(karyaId: string, juriId: string): void {
   const state = readState();
   const id = kunci(karyaId, juriId);
-  const current = state.tinjauan[id];
-  if (!current || current.status !== "sudah") {
+  if (state.tinjauan[id]?.status !== "sudah") {
     return;
   }
-  const now = new Date().toISOString();
   delete state.tinjauan[id];
-  recordChange(state, "batalkan-sudah-ditinjau", karyaId, juriId, "sudah", "belum", now);
   writeState(state);
 }
 
@@ -501,8 +689,7 @@ export function jadikanKandidat(karyaId: string, juriId: string): void {
   const kategori = kategoriKarya(karyaId, juriId);
   const state = readState();
   const id = kunci(karyaId, juriId);
-  const current = pilihanAktif(state, karyaId, juriId);
-  if (current) {
+  if (pilihanAktif(state, karyaId, juriId)) {
     return;
   }
   if (state.tinjauan[id]?.status !== "sudah") {
@@ -513,33 +700,167 @@ export function jadikanKandidat(karyaId: string, juriId: string): void {
   );
   if (
     !candidateExists &&
-    jumlahKandidatKategori(kategori) >= ATURAN_LOMBA[kategori].batasKandidat
+    jumlahKandidatKategori(kategori, state) >=
+      ATURAN_LOMBA[kategori].batasKandidat
   ) {
     throw new Error("Kuota kandidat penuh.");
   }
   const now = new Date().toISOString();
   state.pilihanKandidat[id] = { ditandaiPada: now };
-  recordChange(state, "jadikan-kandidat", karyaId, juriId, null, now, now);
+  recordDecision(
+    state,
+    "jadikan-kandidat",
+    karyaId,
+    juriId,
+    null,
+    "kandidat",
+    now,
+  );
   writeState(state);
 }
 
-export function batalkanKandidat(karyaId: string, juriId: string): void {
+export function tetapkanPeringkat(
+  karyaId: string,
+  juriId: string,
+  peringkat: number,
+  opsi: { gantiPenghuni?: boolean } = {},
+): void {
+  // TODO: kunci perubahan jika pengumuman sudah dirilis berdasarkan tabel pengaturan.
+  const kategori = kategoriKarya(karyaId, juriId);
+  if (
+    !Number.isInteger(peringkat) ||
+    peringkat < 1 ||
+    peringkat > ATURAN_LOMBA[kategori].jumlahPeringkat
+  ) {
+    throw new Error(
+      `Peringkat harus berupa bilangan bulat dari 1 sampai ${ATURAN_LOMBA[kategori].jumlahPeringkat}.`,
+    );
+  }
+
   const state = readState();
-  const id = kunci(karyaId, juriId);
-  const current = pilihanAktif(state, karyaId, juriId);
-  if (!current) {
+  if (selectedJudgesInCategory(state, karyaId, kategori).length === 0) {
+    throw new Error("Karya harus menjadi kandidat sebelum diberi peringkat.");
+  }
+  const occupantId = findRankOccupant(state, kategori, peringkat);
+  if (occupantId === karyaId) {
     return;
   }
+  if (occupantId && !opsi.gantiPenghuni) {
+    const occupant = getKaryaAndKategori(occupantId);
+    throw new Error(
+      `Peringkat ${peringkat} sudah ditempati ${occupant?.peserta.nama ?? "karya lain"}.`,
+    );
+  }
+
   const now = new Date().toISOString();
-  state.pilihanKandidat[id] = null;
-  recordChange(
+  if (occupantId) {
+    const oldRank = state.peringkat[occupantId];
+    if (!oldRank) {
+      throw new Error("Peringkat yang akan diganti tidak ditemukan.");
+    }
+    delete state.peringkat[occupantId];
+    recordDecision(
+      state,
+      "hapus-peringkat",
+      occupantId,
+      juriId,
+      String(oldRank.peringkat),
+      null,
+      now,
+      `Diganti oleh ${getKaryaAndKategori(karyaId)?.peserta.nama ?? "karya lain"}`,
+    );
+  }
+
+  const currentRank = state.peringkat[karyaId];
+  state.peringkat[karyaId] = {
+    peringkat,
+    ditetapkanOleh:
+      JURI_CONTOH.find((juri) => juri.id === juriId)?.nama ?? "",
+    ditetapkanPada: now,
+  };
+  recordDecision(
+    state,
+    currentRank ? "pindah-peringkat" : "tetapkan-peringkat",
+    karyaId,
+    juriId,
+    currentRank ? String(currentRank.peringkat) : null,
+    String(peringkat),
+    now,
+  );
+  writeState(state);
+}
+
+export function kosongkanPeringkat(karyaId: string, juriId: string): void {
+  getJudgeInCategory(karyaId, juriId);
+  const state = readState();
+  const currentRank = state.peringkat[karyaId];
+  if (!currentRank) {
+    return;
+  }
+  delete state.peringkat[karyaId];
+  const now = new Date().toISOString();
+  recordDecision(
+    state,
+    "hapus-peringkat",
+    karyaId,
+    juriId,
+    String(currentRank.peringkat),
+    null,
+    now,
+    "Dikosongkan manual",
+  );
+  writeState(state);
+}
+
+export function batalkanKandidat(
+  karyaId: string,
+  juriId: string,
+  opsi: { hapusPeringkat?: boolean } = {},
+): void {
+  const state = readState();
+  const id = kunci(karyaId, juriId);
+  if (!pilihanAktif(state, karyaId, juriId)) {
+    return;
+  }
+  const juri = JURI_CONTOH.find((entry) => entry.id === juriId);
+  const data = getKaryaAndKategori(karyaId);
+  if (!juri || !data || juri.kategori !== data.peserta.kategori) {
+    throw new Error("Karya dan juri harus berasal dari kategori yang sama.");
+  }
+  const rank = state.peringkat[karyaId];
+  const lastChoice =
+    rank &&
+    selectedJudgesInCategory(state, karyaId, juri.kategori).every(
+      (juriPemilih) => juriPemilih.id === juriId,
+    );
+  if (lastChoice && !opsi.hapusPeringkat) {
+    throw new Error(
+      `Membatalkan pilihan terakhir akan menghapus peringkat ${rank.peringkat}.`,
+    );
+  }
+  delete state.pilihanKandidat[id];
+  const now = new Date().toISOString();
+  recordDecision(
     state,
     "batalkan-kandidat",
     karyaId,
     juriId,
-    current.ditandaiPada,
+    "kandidat",
     null,
     now,
   );
+  if (lastChoice && rank) {
+    delete state.peringkat[karyaId];
+    recordDecision(
+      state,
+      "hapus-peringkat",
+      karyaId,
+      juriId,
+      String(rank.peringkat),
+      null,
+      now,
+      "Pilihan terakhir dibatalkan",
+    );
+  }
   writeState(state);
 }

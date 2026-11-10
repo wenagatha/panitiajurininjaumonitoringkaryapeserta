@@ -1,9 +1,9 @@
-import { ATURAN_LOMBA } from "@/lib/aturan-lomba";
 import type {
   Karya,
   KategoriLomba,
   Peserta,
   PesertaDashboard,
+  PesertaDashboardRingkas,
 } from "@/types/karya";
 
 const URL_KARYA_DEMO = "/dokumen/buku-cerita-ham-10-cerita.pdf";
@@ -494,6 +494,8 @@ const peringkatContoh: Readonly<
   "p-010": { peringkat: 3, ditetapkanOleh: "Juri Komik A" },
 };
 
+// tahap, dipilihOleh, peringkat, ditetapkanOleh, dan ditetapkanPada hanya seed;
+// sumber kebenarannya ada di lib/state-juri.ts.
 export const karyaContoh: Karya[] = pesertaContoh.map((peserta, index) => {
   const dipilihOleh = pilihanJuriContoh[peserta.id] ?? [];
   const penetapan = peringkatContoh[peserta.id];
@@ -516,51 +518,33 @@ export const karyaContoh: Karya[] = pesertaContoh.map((peserta, index) => {
   };
 });
 
-export type KandidatContoh = {
-  karya: Pick<
-    Karya,
-    "id" | "status" | "tahap" | "dipilihOleh" | "ditandaiPada"
-  >;
-  peserta: Pick<Peserta, "id" | "nama" | "asal" | "kategori">;
-};
-
-export function getKandidatByKategori(
+export function getKaryaPesertaRingkasByKategori(
   kategori: KategoriLomba,
-): KandidatContoh[] {
+): PesertaDashboardRingkas[] {
+  // TODO: ganti sumber daftar ini dengan Supabase query.
   const pesertaById = new Map(
     pesertaContoh.map((peserta) => [peserta.id, peserta]),
   );
-  // TODO: hanya karya berstatus diverifikasi; nantinya juga dijaga oleh RLS Supabase.
-  return karyaContoh
-    .filter(
-      (karya) => karya.tahap === "kandidat" && karya.status === "diverifikasi",
-    )
-    .flatMap((karya) => {
-      const peserta = pesertaById.get(karya.pesertaId);
-      if (!peserta || peserta.kategori !== kategori) {
-        return [];
-      }
-      const { id, nama, asal, kategori: kategoriPeserta } = peserta;
-      const { status, tahap, dipilihOleh, ditandaiPada } = karya;
-      return [
-        {
-          karya: {
-            id: karya.id,
-            status,
-            tahap,
-            dipilihOleh,
-            ditandaiPada,
-          },
-          peserta: { id, nama, asal, kategori: kategoriPeserta },
+  return karyaContoh.flatMap((karya) => {
+    const peserta = pesertaById.get(karya.pesertaId);
+    if (!peserta || peserta.kategori !== kategori) {
+      return [];
+    }
+    return [
+      {
+        id: peserta.id,
+        nama: peserta.nama,
+        asal: peserta.asal,
+        kategori: peserta.kategori,
+        tanggalDaftar: peserta.tanggalDaftar,
+        karya: {
+          id: karya.id,
+          pesertaId: karya.pesertaId,
+          status: karya.status,
         },
-      ];
-    })
-    .sort(
-      (first, second) =>
-        new Date(first.karya.ditandaiPada).getTime() -
-        new Date(second.karya.ditandaiPada).getTime(),
-    )
-    .slice(0, ATURAN_LOMBA[kategori].batasKandidat);
+      },
+    ];
+  });
 }
 
 export function getPesertaDashboardByKategori(

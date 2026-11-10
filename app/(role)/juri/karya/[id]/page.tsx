@@ -1,15 +1,20 @@
 import { notFound } from "next/navigation";
 import TinjauKarya from "@/components/dashboard/TinjauKarya";
 import { getBerkasDemo } from "@/lib/berkas-demo";
-import { JURI_AKTIF } from "@/lib/juri-contoh";
+import { getJuriAktif } from "@/lib/juri-aktif";
 import { karyaContoh, pesertaContoh } from "@/lib/data-contoh";
 
 export default async function JuriTinjauKaryaPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ dari?: string | string[] }>;
 }) {
   const { id } = await params;
+  const { dari } = await searchParams;
+  const readOnlyFromWinners = dari === "pemenang";
+  const juriAktif = await getJuriAktif();
   const karya = karyaContoh.find((item) => item.id === id);
   const peserta = karya
     ? pesertaContoh.find((item) => item.id === karya.pesertaId)
@@ -18,7 +23,7 @@ export default async function JuriTinjauKaryaPage({
   if (
     !karya ||
     !peserta ||
-    peserta.kategori !== JURI_AKTIF.kategori ||
+    peserta.kategori !== juriAktif.kategori ||
     karya.status !== "diverifikasi"
   ) {
     notFound();
@@ -42,6 +47,8 @@ export default async function JuriTinjauKaryaPage({
         berkas: berkasKarya,
       }}
       role="juri"
+      readOnly={readOnlyFromWinners}
+      readOnlySource={readOnlyFromWinners ? "pemenang" : undefined}
     />
   );
 }

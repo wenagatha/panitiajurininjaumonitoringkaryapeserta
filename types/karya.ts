@@ -18,9 +18,11 @@ export type Karya = {
   id: string;
   pesertaId: Peserta["id"];
   status: StatusKarya;
+  // Seed contoh; sumber kebenaran tahap dan penanda kandidat adalah state-juri.
   tahap: "biasa" | "kandidat";
   dipilihOleh: string[];
   ditandaiPada: string;
+  // Seed contoh; sumber kebenaran peringkat adalah state-juri.
   peringkat: number | null;
   ditetapkanOleh: string | null;
   ditetapkanPada: string | null;

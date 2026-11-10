@@ -4,13 +4,26 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ATURAN_LOMBA } from "@/lib/aturan-lomba";
 import { formatTanggal } from "@/lib/format-tanggal";
-import type { KaryaBerperingkat } from "@/lib/peringkat";
 import { useStatusKarya } from "@/lib/review-status";
-import type { KategoriLomba } from "@/types/karya";
+import {
+  getKandidatKategori,
+  getPeringkatKategori,
+  useStateJuri,
+} from "@/lib/state-juri";
+import type { KategoriLomba, StatusKarya } from "@/types/karya";
+
+type PemenangKategoriItem = {
+  karya: { id: string; status: StatusKarya };
+  id: string;
+  nama: string;
+  asal: string;
+  kategori: KategoriLomba;
+};
 
 type PemenangKategoriProps = {
   kategori: KategoriLomba;
-  items: KaryaBerperingkat[];
+  items: PemenangKategoriItem[];
+  role?: "panitia" | "juri";
 };
 
 const MEDAL_STYLES = [
@@ -40,13 +53,20 @@ function getInisial(nama: string): string {
     .toLocaleUpperCase("id-ID");
 }
 
-function getDetailKaryaHref(karyaId: string, kategori: KategoriLomba): string {
-  return `/panitia/karya/${karyaId}?dari=pemenang&kategori=${kategori}`;
+function getDetailKaryaHref(
+  karyaId: string,
+  kategori: KategoriLomba,
+  role: "panitia" | "juri",
+): string {
+  return role === "juri"
+    ? `/juri/karya/${karyaId}?dari=pemenang`
+    : `/panitia/karya/${karyaId}?dari=pemenang&kategori=${kategori}`;
 }
 
 export default function PemenangKategori({
   kategori,
   items,
+  role = "panitia",
 }: PemenangKategoriProps) {
   const [query, setQuery] = useState("");
   const judulKategori =
@@ -54,37 +74,46 @@ export default function PemenangKategori({
   const aturan = ATURAN_LOMBA[kategori];
   const karya = useMemo(() => items.map((item) => item.karya), [items]);
   const { statuses, error } = useStatusKarya(karya);
+  const { state, error: stateError } = useStateJuri();
+  const pilihanKandidat = getKandidatKategori(kategori, state);
+  const stateRanks = getPeringkatKategori(kategori, state);
+  const kandidatIds = useMemo(
+    () => new Set(pilihanKandidat.map((kandidat) => kandidat.karyaId)),
+    [pilihanKandidat],
+  );
+  const itemByKaryaId = useMemo(
+    () => new Map(items.map((item) => [item.karya.id, item])),
+    [items],
+  );
+  const peringkat = useMemo(
+    () =>
+      stateRanks.flatMap((rank) => {
+        const item = itemByKaryaId.get(rank.karyaId);
+        if (
+          !item ||
+          !kandidatIds.has(rank.karyaId) ||
+          (statuses[rank.karyaId] ?? item.karya.status) !== "diverifikasi"
+        ) {
+          return [];
+        }
+        return [{ ...rank, peserta: item }];
+      }),
+    [itemByKaryaId, kandidatIds, stateRanks, statuses],
+  );
   const podiumRanks = Array.from(
     { length: aturan.jumlahJuara },
     (_, index) => index + 1,
   );
   if (podiumRanks.length > 1) {
-    const first = podiumRanks[0];
-    const second = podiumRanks[1];
-    podiumRanks[0] = second;
-    podiumRanks[1] = first;
+    [podiumRanks[0], podiumRanks[1]] = [podiumRanks[1], podiumRanks[0]];
   }
-  const itemsByRank = useMemo(
-    () =>
-      new Map(
-        items.flatMap((item) => {
-          const status = statuses[item.karya.id] ?? item.karya.status;
-          return item.karya.peringkat === null || status !== "diverifikasi"
-            ? []
-            : [[item.karya.peringkat, item] as const];
-        }),
-      ),
-    [items, statuses],
+  const winnersByRank = useMemo(
+    () => new Map(peringkat.map((rank) => [rank.peringkat, rank])),
+    [peringkat],
   );
   const peringkatLanjutan = useMemo(
-    () =>
-      items.filter(
-        (item) =>
-          item.karya.peringkat !== null &&
-          (statuses[item.karya.id] ?? item.karya.status) === "diverifikasi" &&
-          item.karya.peringkat > aturan.jumlahJuara,
-      ),
-    [aturan.jumlahJuara, items, statuses],
+    () => peringkat.filter((rank) => rank.peringkat > aturan.jumlahJuara),
+    [peringkat, aturan.jumlahJuara],
   );
   const peringkatTerfilter = useMemo(() => {
     const searchTerm = query.trim().toLocaleLowerCase("id-ID");
@@ -103,9 +132,9 @@ export default function PemenangKategori({
 
   return (
     <main className="mx-auto max-w-[920px]">
-      {error && (
+      {(error || stateError) && (
         <p role="alert" className="mb-4 rounded-lg bg-[#fff0f0] px-3 py-2 text-xs text-[#a33340]">
-          {error}
+          {error || stateError}
         </p>
       )}
       <header className="mb-4">
@@ -132,14 +161,13 @@ export default function PemenangKategori({
           PEMENANG {judulKategori.toLocaleUpperCase("id-ID")}
         </p>
         <div className="grid items-end gap-3 sm:grid-cols-3">
-          {podiumRanks.map((peringkat) => {
-            const winner = itemsByRank.get(peringkat);
-            const medalStyle =
-              MEDAL_STYLES[podiumRanks.indexOf(peringkat)] ?? MEDAL_STYLES[2];
+          {podiumRanks.map((peringkatJuara, index) => {
+            const winner = winnersByRank.get(peringkatJuara);
+            const medalStyle = MEDAL_STYLES[index] ?? MEDAL_STYLES[2];
 
             return (
               <article
-                key={peringkat}
+                key={peringkatJuara}
                 className={`relative flex min-h-[190px] flex-col rounded-xl border-2 p-3 ${
                   winner
                     ? `${medalStyle.border} bg-white`
@@ -147,10 +175,10 @@ export default function PemenangKategori({
                 }`}
               >
                 <span
-                  aria-label={`Peringkat ${peringkat}`}
+                  aria-label={`Peringkat ${peringkatJuara}`}
                   className={`absolute right-3 top-3 flex size-10 items-center justify-center rounded-full border-2 text-sm font-bold tabular-nums ${medalStyle.badge}`}
                 >
-                  {peringkat}
+                  {peringkatJuara}
                 </span>
                 <svg
                   aria-hidden="true"
@@ -179,19 +207,14 @@ export default function PemenangKategori({
                         {winner.peserta.asal}
                       </p>
                     </div>
-                    {winner.karya.ditetapkanOleh &&
-                      winner.karya.ditetapkanPada && (
-                        <p className="mt-3 text-[10px] text-[#84918b]">
-                          Ditetapkan oleh {winner.karya.ditetapkanOleh} pada{" "}
-                          {formatTanggal(
-                            new Date(
-                              winner.karya.ditetapkanPada,
-                            ).toISOString().slice(0, 10),
-                          )}
-                        </p>
+                    <p className="mt-3 text-[10px] text-[#84918b]">
+                      Ditetapkan oleh {winner.ditetapkanOleh} pada{" "}
+                      {formatTanggal(
+                        new Date(winner.ditetapkanPada).toISOString().slice(0, 10),
                       )}
+                    </p>
                     <Link
-                      href={getDetailKaryaHref(winner.karya.id, kategori)}
+                      href={getDetailKaryaHref(winner.karyaId, kategori, role)}
                       className="mt-auto block rounded-lg bg-[#245c4f] px-3 py-2.5 text-center text-[10px] font-semibold text-white transition hover:bg-[#19483e]"
                     >
                       Lihat karya
@@ -208,6 +231,7 @@ export default function PemenangKategori({
         </div>
 
         <p className="mt-4 text-center text-[10px] text-[#84918b]">
+          {/* TODO: status pengumuman dirilis akan dibaca dari tabel pengaturan. */}
           Hasil sementara; masih dapat berubah sebelum hari pengumuman.
         </p>
 
@@ -222,11 +246,11 @@ export default function PemenangKategori({
                   Peserta dengan peringkat berikutnya
                 </p>
               </div>
-              <label className="sr-only" htmlFor="winner-search">
+              <label className="sr-only" htmlFor={`winner-search-${kategori}`}>
                 Cari nama atau asal peserta
               </label>
               <input
-                id="winner-search"
+                id={`winner-search-${kategori}`}
                 type="search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
@@ -251,30 +275,30 @@ export default function PemenangKategori({
               </p>
             ) : (
               <ol className="mt-3 space-y-2">
-                {peringkatTerfilter.map(({ karya, peserta }) => (
+                {peringkatTerfilter.map((rank) => (
                   <li
-                    key={karya.id}
+                    key={rank.karyaId}
                     className="flex items-center gap-3 rounded-lg border border-[#e3eae6] bg-white p-3"
                   >
                     <span className="w-6 shrink-0 text-center text-sm font-semibold tabular-nums text-[#64716c]">
-                      {karya.peringkat}
+                      {rank.peringkat}
                     </span>
                     <span
                       aria-hidden="true"
                       className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#eaf4ef] text-[10px] font-bold text-[#356454]"
                     >
-                      {getInisial(peserta.nama)}
+                      {getInisial(rank.peserta.nama)}
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-xs font-semibold text-[#345248]">
-                        {peserta.nama}
+                        {rank.peserta.nama}
                       </span>
                       <span className="mt-0.5 block truncate text-[10px] text-[#89958f]">
-                        {peserta.asal}
+                        {rank.peserta.asal}
                       </span>
                     </span>
                     <Link
-                      href={getDetailKaryaHref(karya.id, kategori)}
+                      href={getDetailKaryaHref(rank.karyaId, kategori, role)}
                       className="shrink-0 rounded-lg bg-[#245c4f] px-3 py-2.5 text-[10px] font-semibold text-white transition hover:bg-[#19483e]"
                     >
                       Lihat karya

@@ -16,18 +16,13 @@ export default async function TinjauKaryaPage({
   const peserta = karya
     ? pesertaContoh.find((item) => item.id === karya.pesertaId)
     : undefined;
-  const isCandidateReadOnly =
-    dari === "kandidat" &&
-    kategori === peserta?.kategori &&
-    karya?.tahap === "kandidat" &&
-    karya.status === "diverifikasi";
-  const isWinnerReadOnly = dari === "pemenang";
-  const readOnly = isCandidateReadOnly || isWinnerReadOnly;
-
   if (!karya || !peserta) {
     notFound();
   }
 
+  const readOnly =
+    (dari === "kandidat" || dari === "pemenang") &&
+    kategori === peserta.kategori;
   const berkas = getBerkasDemo(peserta, karya);
 
   return (

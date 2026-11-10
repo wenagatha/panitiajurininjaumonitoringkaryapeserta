@@ -2,10 +2,11 @@ import KaryaCategoryList, {
   type KaryaDaftarItem,
 } from "@/components/dashboard/KaryaCategoryList";
 import { getBerkasDemo } from "@/lib/berkas-demo";
-import { JURI_AKTIF } from "@/lib/juri-contoh";
+import { getJuriAktif } from "@/lib/juri-aktif";
 import { karyaContoh, pesertaContoh } from "@/lib/data-contoh";
 
-export default function JuriKaryaPage() {
+export default async function JuriKaryaPage() {
+  const juriAktif = await getJuriAktif();
   const pesertaById = new Map(
     pesertaContoh.map((peserta) => [peserta.id, peserta]),
   );
@@ -14,7 +15,7 @@ export default function JuriKaryaPage() {
     const peserta = pesertaById.get(karya.pesertaId);
     if (
       !peserta ||
-      peserta.kategori !== JURI_AKTIF.kategori ||
+      peserta.kategori !== juriAktif.kategori ||
       karya.status !== "diverifikasi"
     ) {
       return [];
@@ -39,7 +40,7 @@ export default function JuriKaryaPage() {
 
   return (
     <KaryaCategoryList
-      kategori={JURI_AKTIF.kategori}
+      kategori={juriAktif.kategori}
       items={items}
       role="juri"
     />

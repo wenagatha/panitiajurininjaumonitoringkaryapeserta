@@ -6,9 +6,12 @@ import { getStatusLabel, getStatusStyle, STATUS_KARYA } from "@/lib/status";
 import type { BerkasKarya } from "@/lib/berkas-demo";
 import { useStatusKarya } from "@/lib/review-status";
 import { ATURAN_LOMBA } from "@/lib/aturan-lomba";
-import { JURI_AKTIF, JURI_CONTOH } from "@/lib/juri-contoh";
+import { JURI_CONTOH } from "@/lib/juri-contoh";
+import { useJuriAktif } from "@/components/juri/JuriAktifProvider";
+import { useDetakWaktu } from "@/lib/use-detak-waktu";
 import {
   daftarJuriKandidat,
+  getPeringkatKategori,
   jumlahKandidatKategori,
   statusTinjauanJuri,
   useStateJuri,
@@ -65,10 +68,47 @@ export default function KaryaCategoryList({
   items,
   role = "panitia",
 }: KaryaCategoryListProps) {
+  if (role === "juri") {
+    return <KaryaCategoryListJuri kategori={kategori} items={items} />;
+  }
+  return (
+    <KaryaCategoryListContent
+      kategori={kategori}
+      items={items}
+      role="panitia"
+    />
+  );
+}
+
+function KaryaCategoryListJuri({
+  kategori,
+  items,
+}: Omit<KaryaCategoryListProps, "role">) {
+  const juriAktif = useJuriAktif();
+  return (
+    <KaryaCategoryListContent
+      kategori={kategori}
+      items={items}
+      role="juri"
+      juriAktif={juriAktif}
+    />
+  );
+}
+
+function KaryaCategoryListContent({
+  kategori,
+  items,
+  role,
+  juriAktif,
+}: Omit<KaryaCategoryListProps, "role"> & {
+  role: "panitia" | "juri";
+  juriAktif?: ReturnType<typeof useJuriAktif>;
+}) {
   const router = useRouter();
+  useDetakWaktu(30_000);
   const karya = useMemo(() => items.map((item) => item.karya), [items]);
   const { statuses, setStatus, error } = useStatusKarya(karya);
-  const { error: stateJuriError } = useStateJuri();
+  const { state: stateJuri, error: stateJuriError } = useStateJuri();
   const [query, setQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<"semua" | StatusKarya>(
     "semua",
@@ -78,8 +118,8 @@ export default function KaryaCategoryList({
   >("semua");
 
   const roleItems = useMemo(
-    () => filterKaryaUntukRole(items, role, statuses, JURI_AKTIF.kategori),
-    [items, role, statuses],
+    () => filterKaryaUntukRole(items, role, statuses, juriAktif?.kategori),
+    [items, juriAktif?.kategori, role, statuses],
   );
   const searchTerm = query.trim().toLocaleLowerCase("id-ID");
   const visibleItems = roleItems.filter(({ karya: work, peserta }) => {
@@ -89,7 +129,9 @@ export default function KaryaCategoryList({
       peserta.nama.toLocaleLowerCase("id-ID").includes(searchTerm) ||
       peserta.asal.toLocaleLowerCase("id-ID").includes(searchTerm);
     const reviewStatus =
-      role === "juri" ? statusTinjauanJuri(work.id, JURI_AKTIF.id) : "belum";
+      role === "juri" && juriAktif
+        ? statusTinjauanJuri(work.id, juriAktif.id)
+        : "belum";
     const matchesJuriReview =
       role !== "juri" ||
       filterTinjauan === "semua" ||
@@ -143,7 +185,10 @@ export default function KaryaCategoryList({
   );
   const juriReviewCounts = roleItems.reduce(
     (result, { karya: work }) => {
-      if (statusTinjauanJuri(work.id, JURI_AKTIF.id) === "sudah") {
+      if (
+        juriAktif &&
+        statusTinjauanJuri(work.id, juriAktif.id) === "sudah"
+      ) {
         result.sudah += 1;
       } else {
         result.belum += 1;
@@ -152,8 +197,15 @@ export default function KaryaCategoryList({
     },
     { belum: 0, sudah: 0 },
   );
+  const kategoriJuri = juriAktif?.kategori ?? kategori;
   const candidateCount =
-    role === "juri" ? jumlahKandidatKategori(JURI_AKTIF.kategori) : 0;
+    role === "juri" ? jumlahKandidatKategori(kategoriJuri, stateJuri) : 0;
+  const rankByWorkId = new Map(
+    getPeringkatKategori(kategoriJuri, stateJuri).map((rank) => [
+      rank.karyaId,
+      rank.peringkat,
+    ]),
+  );
   const statusCards =
     role === "juri"
       ? [
@@ -163,7 +215,7 @@ export default function KaryaCategoryList({
           {
             key: "kandidat",
             label: "Kandidat",
-            value: `${candidateCount} dari ${ATURAN_LOMBA[JURI_AKTIF.kategori].batasKandidat}`,
+            value: `${candidateCount} dari ${ATURAN_LOMBA[kategoriJuri].batasKandidat}`,
             color: "#f0a000",
           },
         ]
@@ -292,6 +344,17 @@ export default function KaryaCategoryList({
           {visibleItems.map((item) => {
             const status = statuses[item.karya.id] ?? item.karya.status;
             const statusStyle = getStatusStyle(status);
+            const candidateJudges = daftarJuriKandidat(
+              item.karya.id,
+              stateJuri,
+            );
+            const selectedByActive = candidateJudges.some(
+              (juri) => juri.id === juriAktif?.id,
+            );
+            const otherCandidateJudges = candidateJudges.filter(
+              (juri) => juri.id !== juriAktif?.id,
+            );
+            const rank = rankByWorkId.get(item.karya.id);
             const visibleFiles =
               role === "juri"
                 ? item.berkas.filter((file) => file.jenis === "karya")
@@ -308,6 +371,34 @@ export default function KaryaCategoryList({
                       {labelKarya}
                     </span>
                     <div className="flex items-center gap-2">
+                      {status === "diverifikasi" &&
+                        role === "panitia" &&
+                        candidateJudges.length > 0 && (
+                          <span className="inline-flex w-fit rounded-full bg-[#eafbf4] px-2.5 py-1 text-xs font-semibold text-[#24724f]">
+                            Kandidat
+                          </span>
+                        )}
+                      {status === "diverifikasi" && role === "juri" && (
+                        <>
+                          {selectedByActive ? (
+                            <span className="inline-flex w-fit rounded-full bg-[#eaf4ef] px-2.5 py-1 text-xs font-semibold text-[#28634d]">
+                              Pilihan Anda
+                            </span>
+                          ) : otherCandidateJudges.length > 0 ? (
+                            <span className="inline-flex w-fit rounded-full bg-[#f1f4f2] px-2.5 py-1 text-xs font-semibold text-[#64716c]">
+                              Dipilih{" "}
+                              {otherCandidateJudges
+                                .map((juri) => juri.nama)
+                                .join(", ")}
+                            </span>
+                          ) : null}
+                          {rank !== undefined && (
+                            <span className="inline-flex w-fit rounded-full bg-[#fff4d8] px-2.5 py-1 text-xs font-semibold text-[#946914]">
+                              Peringkat {rank}
+                            </span>
+                          )}
+                        </>
+                      )}
                       {role === "panitia" ? (
                         <>
                           <label className="sr-only" htmlFor={`status-${item.karya.id}`}>
@@ -339,20 +430,13 @@ export default function KaryaCategoryList({
                           </button>
                         </>
                       ) : (
-                        <>
-                          {daftarJuriKandidat(item.karya.id).length > 0 && (
-                            <span className="inline-flex w-fit rounded-full bg-[#eafbf4] px-2.5 py-1 text-xs font-semibold text-[#24724f]">
-                              Kandidat
-                            </span>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => openReview(item)}
-                            className="rounded-lg bg-[#245c4f] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#19483e]"
-                          >
-                            Tinjau
-                          </button>
-                        </>
+                        <button
+                          type="button"
+                          onClick={() => openReview(item)}
+                          className="rounded-lg bg-[#245c4f] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#19483e]"
+                        >
+                          Tinjau
+                        </button>
                       )}
                     </div>
                   </div>
@@ -376,10 +460,14 @@ export default function KaryaCategoryList({
                     )}
                   </dl>
 
-                  {role === "juri" && (
+                  {(role === "juri" || status === "diverifikasi") && (
                     <div className="mb-3 grid gap-2 sm:grid-cols-2">
                       {JURI_CONTOH.filter(
-                        (juri) => juri.kategori === JURI_AKTIF.kategori,
+                        (juri) =>
+                          juri.kategori ===
+                          (role === "juri"
+                            ? juriAktif?.kategori
+                            : item.peserta.kategori),
                       ).map((juri) => {
                         const review = statusTinjauanJuri(item.karya.id, juri.id);
                         return (
