@@ -73,7 +73,7 @@ export default function PemenangKategori({
     kategori === "cerita" ? "Cerita HAM" : "Komik Bergambar";
   const aturan = ATURAN_LOMBA[kategori];
   const karya = useMemo(() => items.map((item) => item.karya), [items]);
-  const { statuses, error } = useStatusKarya(karya);
+  const { statuses, ready, error } = useStatusKarya(karya);
   const { state, error: stateError } = useStateJuri();
   const pilihanKandidat = getKandidatKategori(kategori, state);
   const stateRanks = getPeringkatKategori(kategori, state);
@@ -129,6 +129,21 @@ export default function PemenangKategori({
   const peringkatPertamaLanjutan = aturan.jumlahJuara + 1;
   const jumlahPeringkatLanjutan =
     aturan.jumlahPeringkat - aturan.jumlahJuara;
+
+  if (role === "juri" && !ready) {
+    return (
+      <main className="mx-auto max-w-[920px]">
+        {error && (
+          <p role="alert" className="mb-4 rounded-lg bg-[#fff0f0] px-3 py-2 text-xs text-[#a33340]">
+            {error}
+          </p>
+        )}
+        <p role="status" className="text-sm text-[#84918b]">
+          Memuat daftar karya...
+        </p>
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto max-w-[920px]">

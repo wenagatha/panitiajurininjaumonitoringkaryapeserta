@@ -1,8 +1,7 @@
 import { notFound } from "next/navigation";
 import TinjauKarya from "@/components/dashboard/TinjauKarya";
-import { getBerkasDemo } from "@/lib/berkas-demo";
 import { getJuriAktif } from "@/lib/juri-aktif";
-import { karyaContoh, pesertaContoh } from "@/lib/data-contoh";
+import { getKaryaJuriByKategori } from "@/lib/karya-juri";
 
 export default async function JuriTinjauKaryaPage({
   params,
@@ -15,37 +14,16 @@ export default async function JuriTinjauKaryaPage({
   const { dari } = await searchParams;
   const readOnlyFromWinners = dari === "pemenang";
   const juriAktif = await getJuriAktif();
-  const karya = karyaContoh.find((item) => item.id === id);
-  const peserta = karya
-    ? pesertaContoh.find((item) => item.id === karya.pesertaId)
-    : undefined;
-
-  if (
-    !karya ||
-    !peserta ||
-    peserta.kategori !== juriAktif.kategori ||
-    karya.status !== "diverifikasi"
-  ) {
+  const item = getKaryaJuriByKategori(juriAktif.kategori).find(
+    (entry) => entry.karya.id === id,
+  );
+  if (!item) {
     notFound();
   }
 
-  const berkasKarya = getBerkasDemo(peserta, karya).filter(
-    (berkas) => berkas.jenis === "karya",
-  );
-
   return (
     <TinjauKarya
-      item={{
-        karya: { ...karya, urlPernyataan: "" },
-        peserta: {
-          id: peserta.id,
-          nama: peserta.nama,
-          asal: peserta.asal,
-          kategori: peserta.kategori,
-          tanggalDaftar: peserta.tanggalDaftar,
-        },
-        berkas: berkasKarya,
-      }}
+      item={item}
       role="juri"
       readOnly={readOnlyFromWinners}
       readOnlySource={readOnlyFromWinners ? "pemenang" : undefined}

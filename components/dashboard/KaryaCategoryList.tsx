@@ -11,8 +11,8 @@ import { useJuriAktif } from "@/components/juri/JuriAktifProvider";
 import { useDetakWaktu } from "@/lib/use-detak-waktu";
 import {
   daftarJuriKandidat,
+  getKandidatKategori,
   getPeringkatKategori,
-  jumlahKandidatKategori,
   statusTinjauanJuri,
   useStateJuri,
 } from "@/lib/state-juri";
@@ -24,7 +24,10 @@ import type {
 } from "@/types/karya";
 
 export type KaryaDaftarItem = {
-  karya: Karya;
+  karya: Pick<
+    Karya,
+    "id" | "pesertaId" | "status" | "urlKarya" | "urlPernyataan"
+  >;
   peserta: Pick<
     Peserta,
     "id" | "nama" | "asal" | "kategori" | "tanggalDaftar"
@@ -107,7 +110,7 @@ function KaryaCategoryListContent({
   const router = useRouter();
   useDetakWaktu(30_000);
   const karya = useMemo(() => items.map((item) => item.karya), [items]);
-  const { statuses, setStatus, error } = useStatusKarya(karya);
+  const { statuses, setStatus, ready, error } = useStatusKarya(karya);
   const { state: stateJuri, error: stateJuriError } = useStateJuri();
   const [query, setQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<"semua" | StatusKarya>(
@@ -199,7 +202,15 @@ function KaryaCategoryListContent({
   );
   const kategoriJuri = juriAktif?.kategori ?? kategori;
   const candidateCount =
-    role === "juri" ? jumlahKandidatKategori(kategoriJuri, stateJuri) : 0;
+    role === "juri"
+      ? new Set(
+          getKandidatKategori(kategoriJuri, stateJuri)
+            .filter(({ karyaId }) =>
+              roleItems.some(({ karya: work }) => work.id === karyaId),
+            )
+            .map(({ karyaId }) => karyaId),
+        ).size
+      : 0;
   const rankByWorkId = new Map(
     getPeringkatKategori(kategoriJuri, stateJuri).map((rank) => [
       rank.karyaId,
@@ -226,6 +237,20 @@ function KaryaCategoryListContent({
           { key: "diverifikasi", label: "Diverifikasi", value: counts.diverifikasi, color: "#00a477" },
           { key: "ditolak", label: "Ditolak", value: counts.ditolak, color: "#f04773" },
         ];
+
+  if (role === "juri" && !ready) {
+    return (
+        <main>
+          <p role="status" className="text-sm text-[#84918b]">
+            Memuat daftar karya...
+          </p>
+          <p className="mt-1 text-xs text-[#9aa49f]">
+            Status tinjauan, termasuk Belum ditinjau, akan muncul setelah data
+            dimuat.
+          </p>
+        </main>
+    );
+  }
 
   return (
     <main>

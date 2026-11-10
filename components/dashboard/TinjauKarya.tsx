@@ -202,6 +202,16 @@ function TinjauKaryaContent({
     return () => window.clearTimeout(timeoutId);
   }, [item.karya.id, readOnly, ready, role, setStatus, status]);
 
+  if (role === "juri" && !ready) {
+    return (
+      <main className="mx-auto max-w-[820px]">
+        <p role="status" className="text-sm text-[#84918b]">
+          Memuat karya...
+        </p>
+      </main>
+    );
+  }
+
   function saveDecision() {
     if (setStatus(item.karya.id, draftStatus)) {
       setSaved(true);
@@ -272,9 +282,17 @@ function TinjauKaryaContent({
         {role === "juri" && (
           <Notifikasi notifikasi={notifikasi} onClose={tutupNotifikasi} />
         )}
-        <p className="rounded-lg border border-[#dce5e0] bg-white p-5 text-sm text-[#84918b]">
-          Karya ini tidak tersedia untuk ditinjau oleh juri.
-        </p>
+        <div className="rounded-lg border border-[#dce5e0] bg-white p-5">
+          <p className="text-sm text-[#84918b]">
+            Karya ini tidak tersedia untuk ditinjau.
+          </p>
+          <Link
+            href={backHref}
+            className="mt-3 inline-block text-xs font-semibold text-[#3d7563] hover:underline"
+          >
+            ← Kembali ke {readOnly ? "Pemenang" : kategoriJudul}
+          </Link>
+        </div>
       </main>
     );
   }

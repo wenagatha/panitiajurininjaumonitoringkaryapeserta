@@ -84,7 +84,7 @@ function KandidatKategoriContent({
     kategori === "cerita" ? "Cerita HAM" : "Komik Bergambar";
   const aturan = ATURAN_LOMBA[kategori];
   const works = useMemo(() => items.map((item) => item.karya), [items]);
-  const { statuses, error: statusError } = useStatusKarya(works);
+  const { statuses, ready, error: statusError } = useStatusKarya(works);
   const { state, error: stateError } = useStateJuri();
   const { kandidat: choices, error: candidateError } =
     useKandidatKategori(kategori);
@@ -145,10 +145,31 @@ function KandidatKategoriContent({
     ]),
   );
   const history = state.riwayat
-    .filter((entry) => itemByWorkId.has(entry.karyaId))
+    .filter((entry) => {
+      const item = itemByWorkId.get(entry.karyaId);
+      return (
+        item !== undefined &&
+        (statuses[item.karya.id] ?? item.karya.status) === "diverifikasi"
+      );
+    })
     .sort((first, second) => Date.parse(second.waktu) - Date.parse(first.waktu))
     .slice(0, 10);
   const error = statusError || candidateError || rankError || stateError;
+
+  if (role === "juri" && !ready) {
+    return (
+      <main className="mx-auto max-w-[920px]">
+        {error && (
+          <p role="alert" className="mb-4 rounded-lg bg-[#fff0f0] px-3 py-2 text-xs text-[#a33340]">
+            {error}
+          </p>
+        )}
+        <p role="status" className="text-sm text-[#84918b]">
+          Memuat daftar karya...
+        </p>
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto max-w-[920px]">

@@ -52,11 +52,15 @@ export function writeReviewStatuses(
 export function useStatusKarya(
   karya: readonly Pick<Karya, "id" | "status">[],
 ) {
+  const karyaKey = JSON.stringify(
+    karya.map(({ id, status }) => [id, status]),
+  );
   const [statuses, setStatuses] = useState<Record<string, StatusKarya>>(() =>
     Object.fromEntries(karya.map((item) => [item.id, item.status])),
   );
-  const [ready, setReady] = useState(false);
+  const [loadedKaryaKey, setLoadedKaryaKey] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const ready = loadedKaryaKey === karyaKey;
 
   const loadStatuses = useCallback(() => {
     try {
@@ -77,9 +81,9 @@ export function useStatusKarya(
           : "Status karya gagal dibaca dari penyimpanan browser.",
       );
     } finally {
-      setReady(true);
+      setLoadedKaryaKey(karyaKey);
     }
-  }, [karya]);
+  }, [karya, karyaKey]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(loadStatuses, 0);
