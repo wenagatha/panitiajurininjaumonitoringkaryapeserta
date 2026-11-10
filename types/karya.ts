@@ -18,6 +18,12 @@ export type Karya = {
   id: string;
   pesertaId: Peserta["id"];
   status: StatusKarya;
+  tahap: "biasa" | "kandidat";
+  dipilihOleh: string[];
+  ditandaiPada: string;
+  peringkat: number | null;
+  ditetapkanOleh: string | null;
+  ditetapkanPada: string | null;
   // TODO: nantinya berisi tautan Google Drive dari Google Form.
   urlKarya: string;
   // TODO: nantinya berisi tautan Google Drive dari Google Form.

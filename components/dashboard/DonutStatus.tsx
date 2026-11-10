@@ -6,11 +6,51 @@ type DonutStatusProps = {
   counts: Record<StatusKarya, number>;
 };
 
-const RADIUS = 54;
-const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+const CENTER = 80;
+const OUTER_RADIUS = 62;
+const INNER_RADIUS = 46;
+const RADIUS = (OUTER_RADIUS + INNER_RADIUS) / 2;
+const STROKE_WIDTH = OUTER_RADIUS - INNER_RADIUS;
+
+function getPoint(radius: number, angle: number) {
+  const radians = (angle * Math.PI) / 180;
+  return {
+    x: CENTER + radius * Math.cos(radians),
+    y: CENTER + radius * Math.sin(radians),
+  };
+}
+
+function getSegmentPath(startAngle: number, endAngle: number) {
+  const largeArc = endAngle - startAngle > 180 ? 1 : 0;
+  const outerStart = getPoint(OUTER_RADIUS, startAngle);
+  const outerEnd = getPoint(OUTER_RADIUS, endAngle);
+  const innerEnd = getPoint(INNER_RADIUS, endAngle);
+  const innerStart = getPoint(INNER_RADIUS, startAngle);
+
+  return [
+    `M ${outerStart.x} ${outerStart.y}`,
+    `A ${OUTER_RADIUS} ${OUTER_RADIUS} 0 ${largeArc} 1 ${outerEnd.x} ${outerEnd.y}`,
+    `L ${innerEnd.x} ${innerEnd.y}`,
+    `A ${INNER_RADIUS} ${INNER_RADIUS} 0 ${largeArc} 0 ${innerStart.x} ${innerStart.y}`,
+    "Z",
+  ].join(" ");
+}
 
 export default function DonutStatus({ total, counts }: DonutStatusProps) {
-  let offset = 0;
+  let currentAngle = -90;
+  const segments = total > 0
+    ? STATUS_KARYA.flatMap((status) => {
+        const count = counts[status.value];
+        const angle = (count / total) * 360;
+        if (count <= 0 || angle <= 0) {
+          return [];
+        }
+
+        const startAngle = currentAngle;
+        currentAngle += angle;
+        return [{ status, angle, startAngle, endAngle: currentAngle }];
+      })
+    : [];
 
   return (
     <section className="min-h-[360px] rounded-xl border border-[#dce5e0] border-t-[3px] border-t-[#e9a16f] bg-white p-5 shadow-[0_2px_8px_rgba(27,61,49,0.035)] sm:p-6">
@@ -22,35 +62,34 @@ export default function DonutStatus({ total, counts }: DonutStatusProps) {
           aria-label={`Donut status karya, total ${total} karya`}
           className="relative size-[210px] shrink-0 sm:justify-self-center"
         >
-          <svg viewBox="0 0 160 160" className="size-full -rotate-90">
+          <svg viewBox="0 0 160 160" className="size-full">
             <circle
-              cx="80"
-              cy="80"
+              cx={CENTER}
+              cy={CENTER}
               r={RADIUS}
               fill="none"
               stroke="#edf1ee"
-              strokeWidth="16"
+              strokeWidth={STROKE_WIDTH}
             />
-            {total > 0 &&
-              STATUS_KARYA.map((status) => {
-                const length = (counts[status.value] / total) * CIRCUMFERENCE;
-                const segmentOffset = offset;
-                offset += length;
-
-                return (
-                  <circle
-                    key={status.value}
-                    cx="80"
-                    cy="80"
-                    r={RADIUS}
-                    fill="none"
-                    stroke={status.color}
-                    strokeWidth="16"
-                    strokeDasharray={`${length} ${CIRCUMFERENCE - length}`}
-                    strokeDashoffset={-segmentOffset}
-                  />
-                );
-              })}
+            {segments.map(({ status, angle, startAngle, endAngle }) =>
+              angle >= 360 ? (
+                <circle
+                  key={status.value}
+                  cx={CENTER}
+                  cy={CENTER}
+                  r={RADIUS}
+                  fill="none"
+                  stroke={status.color}
+                  strokeWidth={STROKE_WIDTH}
+                />
+              ) : (
+                <path
+                  key={status.value}
+                  d={getSegmentPath(startAngle, endAngle)}
+                  fill={status.color}
+                />
+              ),
+            )}
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             <span className="text-[26px] font-bold leading-none text-[#21463d]">

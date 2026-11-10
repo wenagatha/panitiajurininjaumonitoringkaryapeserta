@@ -5,6 +5,14 @@ import { useRouter } from "next/navigation";
 import { getStatusLabel, getStatusStyle, STATUS_KARYA } from "@/lib/status";
 import type { BerkasKarya } from "@/lib/berkas-demo";
 import { useStatusKarya } from "@/lib/review-status";
+import { ATURAN_LOMBA } from "@/lib/aturan-lomba";
+import { JURI_AKTIF, JURI_CONTOH } from "@/lib/juri-contoh";
+import {
+  daftarJuriKandidat,
+  jumlahKandidatKategori,
+  statusTinjauanJuri,
+  useStateJuri,
+} from "@/lib/state-juri";
 import type {
   Karya,
   KategoriLomba,
@@ -31,13 +39,16 @@ export function filterKaryaUntukRole(
   items: KaryaDaftarItem[],
   role: "panitia" | "juri",
   statuses: Record<string, StatusKarya>,
+  kategori?: KategoriLomba,
 ): KaryaDaftarItem[] {
   if (role === "panitia") {
     return items;
   }
   // TODO: nantinya penjagaan status terverifikasi juga dilakukan oleh RLS Supabase.
   return items.filter(
-    ({ karya }) => (statuses[karya.id] ?? karya.status) === "diverifikasi",
+    ({ karya, peserta }) =>
+      (statuses[karya.id] ?? karya.status) === "diverifikasi" &&
+      (!kategori || peserta.kategori === kategori),
   );
 }
 
@@ -57,31 +68,42 @@ export default function KaryaCategoryList({
   const router = useRouter();
   const karya = useMemo(() => items.map((item) => item.karya), [items]);
   const { statuses, setStatus, error } = useStatusKarya(karya);
+  const { error: stateJuriError } = useStateJuri();
   const [query, setQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<"semua" | StatusKarya>(
     "semua",
   );
+  const [filterTinjauan, setFilterTinjauan] = useState<
+    "semua" | "belum" | "sudah"
+  >("semua");
 
   const roleItems = useMemo(
-    () => filterKaryaUntukRole(items, role, statuses),
+    () => filterKaryaUntukRole(items, role, statuses, JURI_AKTIF.kategori),
     [items, role, statuses],
   );
-  const visibleItems = useMemo(() => {
-    const searchTerm = query.trim().toLocaleLowerCase("id-ID");
-    return roleItems.filter(({ karya: work, peserta }) => {
-      const currentStatus = statuses[work.id] ?? work.status;
-      const matchesSearch =
-        !searchTerm ||
-        peserta.nama.toLocaleLowerCase("id-ID").includes(searchTerm) ||
-        peserta.asal.toLocaleLowerCase("id-ID").includes(searchTerm);
-      return (
-        matchesSearch &&
-        (role === "juri" ||
-          filterStatus === "semua" ||
-          currentStatus === filterStatus)
-      );
-    });
-  }, [filterStatus, query, role, roleItems, statuses]);
+  const searchTerm = query.trim().toLocaleLowerCase("id-ID");
+  const visibleItems = roleItems.filter(({ karya: work, peserta }) => {
+    const currentStatus = statuses[work.id] ?? work.status;
+    const matchesSearch =
+      !searchTerm ||
+      peserta.nama.toLocaleLowerCase("id-ID").includes(searchTerm) ||
+      peserta.asal.toLocaleLowerCase("id-ID").includes(searchTerm);
+    const reviewStatus =
+      role === "juri" ? statusTinjauanJuri(work.id, JURI_AKTIF.id) : "belum";
+    const matchesJuriReview =
+      role !== "juri" ||
+      filterTinjauan === "semua" ||
+      (filterTinjauan === "sudah"
+        ? reviewStatus === "sudah"
+        : reviewStatus !== "sudah");
+    return (
+      matchesSearch &&
+      matchesJuriReview &&
+      (role === "juri" ||
+        filterStatus === "semua" ||
+        currentStatus === filterStatus)
+    );
+  });
 
   const counts = useMemo(() => {
     const result: Record<"total" | StatusKarya, number> = {
@@ -98,44 +120,74 @@ export default function KaryaCategoryList({
   }, [roleItems, statuses]);
 
   function openReview(item: KaryaDaftarItem) {
+    if (role === "juri") {
+      router.push(`/juri/karya/${item.karya.id}`);
+      return;
+    }
     const currentStatus = statuses[item.karya.id] ?? item.karya.status;
     if (currentStatus === "menunggu" && !setStatus(item.karya.id, "diproses")) {
       return;
     }
-    router.push(
-      `/panitia/karya/${item.karya.id}?kategori=${kategori}`,
-    );
-  }
-
-  function markCandidate() {
-    // TODO: sambungkan aksi ini ke alur kandidat juri.
+    router.push(`/panitia/karya/${item.karya.id}?kategori=${kategori}`);
   }
 
   const kategoriJudul =
-    kategori === "cerita" ? "Cerita HAM" : "Lomba Komik Bergambar";
+    kategori === "cerita"
+      ? "Cerita HAM"
+      : role === "juri"
+        ? "Komik Bergambar"
+        : "Lomba Komik Bergambar";
   const labelKarya = kategori === "cerita" ? "BUKU CERITA" : "KOMIK BERGAMBAR";
-  const hasDemoFiles = visibleItems.some((item) =>
+  const hasDemoFiles = role === "panitia" && visibleItems.some((item) =>
     item.berkas.some((file) => file.isDemo),
   );
-  const statusCards = [
-    { key: "total", label: "Total data karya", color: "#00a477" },
-    { key: "menunggu", label: "Menunggu", color: "#5596e8" },
-    { key: "diproses", label: "Ditinjau", color: "#f39a00" },
-    { key: "diverifikasi", label: "Diverifikasi", color: "#00a477" },
-    { key: "ditolak", label: "Ditolak", color: "#f04773" },
-  ] as const;
+  const juriReviewCounts = roleItems.reduce(
+    (result, { karya: work }) => {
+      if (statusTinjauanJuri(work.id, JURI_AKTIF.id) === "sudah") {
+        result.sudah += 1;
+      } else {
+        result.belum += 1;
+      }
+      return result;
+    },
+    { belum: 0, sudah: 0 },
+  );
+  const candidateCount =
+    role === "juri" ? jumlahKandidatKategori(JURI_AKTIF.kategori) : 0;
+  const statusCards =
+    role === "juri"
+      ? [
+          { key: "total", label: "Total karya", value: counts.total, color: "#00a477" },
+          { key: "belum", label: "Belum saya tinjau", value: juriReviewCounts.belum, color: "#5596e8" },
+          { key: "sudah", label: "Sudah saya tinjau", value: juriReviewCounts.sudah, color: "#00a477" },
+          {
+            key: "kandidat",
+            label: "Kandidat",
+            value: `${candidateCount} dari ${ATURAN_LOMBA[JURI_AKTIF.kategori].batasKandidat}`,
+            color: "#f0a000",
+          },
+        ]
+      : [
+          { key: "total", label: "Total data karya", value: counts.total, color: "#00a477" },
+          { key: "menunggu", label: "Menunggu", value: counts.menunggu, color: "#5596e8" },
+          { key: "diproses", label: "Ditinjau", value: counts.diproses, color: "#f39a00" },
+          { key: "diverifikasi", label: "Diverifikasi", value: counts.diverifikasi, color: "#00a477" },
+          { key: "ditolak", label: "Ditolak", value: counts.ditolak, color: "#f04773" },
+        ];
 
   return (
     <main>
       <header className="mb-5">
         <p className="text-xs font-medium text-[#84918b]">
-          Monitoring &amp; Meninjau
+          {role === "juri" ? "Penilaian" : "Monitoring & Meninjau"}
         </p>
         <h1 className="mt-1 text-[22px] font-bold tracking-tight text-[#24453b]">
           Daftar Karya {kategoriJudul}
         </h1>
         <p className="mt-1 text-xs text-[#84918b]">
-          Pantau karya, berkas, dan status peninjauan lomba {kategoriJudul}.
+          {role === "juri"
+            ? `Tinjau karya terverifikasi untuk kategori ${kategoriJudul}.`
+            : `Pantau karya, berkas, dan status peninjauan lomba ${kategoriJudul}.`}
         </p>
       </header>
 
@@ -146,7 +198,7 @@ export default function KaryaCategoryList({
         </p>
       )}
 
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+      <div className={`mb-4 grid grid-cols-2 gap-3 ${role === "juri" ? "sm:grid-cols-4" : "sm:grid-cols-3 xl:grid-cols-5"}`}>
         {statusCards.map((card) => (
           <div
             key={card.key}
@@ -155,7 +207,7 @@ export default function KaryaCategoryList({
           >
             <p className="text-xs text-[#84918b]">{card.label}</p>
             <p className="mt-1 text-xl font-bold text-[#24453b]">
-              {counts[card.key]}
+              {card.value}
             </p>
           </div>
         ))}
@@ -165,10 +217,12 @@ export default function KaryaCategoryList({
         <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2 className="text-sm font-bold text-[#29463d]">
-              Data karya {kategoriJudul}
+              {role === "juri" ? `Karya ${kategoriJudul}` : `Data karya ${kategoriJudul}`}
             </h2>
             <p className="mt-1 text-xs text-[#84918b]">
-              Cari peserta{role === "panitia" ? " atau saring berdasarkan status" : ""}.
+              {role === "panitia"
+                ? "Cari peserta atau saring berdasarkan status."
+                : "Cari peserta atau saring berdasarkan tinjauan Anda."}
             </p>
           </div>
           <p className="text-xs text-[#84918b]">
@@ -212,11 +266,25 @@ export default function KaryaCategoryList({
               </select>
             </>
           )}
+          {role === "juri" && (
+            <select
+              aria-label="Filter status tinjauan saya"
+              value={filterTinjauan}
+              onChange={(event) =>
+                setFilterTinjauan(event.target.value as "semua" | "belum" | "sudah")
+              }
+              className="h-10 rounded-lg border border-[#dfe6e2] bg-white px-3 text-xs text-[#42564e] outline-none focus:border-[#6b9b86] focus:ring-2 focus:ring-[#6b9b86]/15"
+            >
+              <option value="semua">Semua</option>
+              <option value="belum">Belum saya tinjau</option>
+              <option value="sudah">Sudah saya tinjau</option>
+            </select>
+          )}
         </div>
 
-        {error && (
+        {(error || (role === "juri" ? stateJuriError : "")) && (
           <p role="alert" className="mt-3 rounded-lg bg-[#fff0f0] px-3 py-2 text-xs text-[#a33340]">
-            {error}
+            {error || stateJuriError}
           </p>
         )}
 
@@ -272,25 +340,24 @@ export default function KaryaCategoryList({
                         </>
                       ) : (
                         <>
-                          {statusStyle && (
-                            <span className={`inline-flex w-fit rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyle.badgeClass}`}>
-                              {getStatusLabel(status)}
+                          {daftarJuriKandidat(item.karya.id).length > 0 && (
+                            <span className="inline-flex w-fit rounded-full bg-[#eafbf4] px-2.5 py-1 text-xs font-semibold text-[#24724f]">
+                              Kandidat
                             </span>
                           )}
                           <button
                             type="button"
-                            disabled
-                            onClick={markCandidate}
-                            className="rounded-lg border border-[#dfe6e2] px-4 py-2 text-xs font-semibold text-[#718079] disabled:cursor-not-allowed"
+                            onClick={() => openReview(item)}
+                            className="rounded-lg bg-[#245c4f] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#19483e]"
                           >
-                            Jadikan kandidat
+                            Tinjau
                           </button>
                         </>
                       )}
                     </div>
                   </div>
 
-                  <dl className="grid gap-3 py-3 text-xs sm:grid-cols-3">
+                  <dl className={`grid gap-3 py-3 text-xs ${role === "panitia" ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
                     <div>
                       <dt className="text-[#84918b]">Peserta</dt>
                       <dd className="mt-0.5 font-medium text-[#345248]">{item.peserta.nama}</dd>
@@ -299,14 +366,38 @@ export default function KaryaCategoryList({
                       <dt className="text-[#84918b]">Asal</dt>
                       <dd className="mt-0.5 font-medium text-[#345248]">{item.peserta.asal}</dd>
                     </div>
-                    <div>
-                      <dt className="text-[#84918b]">Tanggal mendaftar</dt>
-                      <dd className="mt-0.5 font-medium text-[#345248]">
-                        {formatTanggal(item.peserta.tanggalDaftar)}
-                      </dd>
-                    </div>
+                    {role === "panitia" && (
+                      <div>
+                        <dt className="text-[#84918b]">Tanggal mendaftar</dt>
+                        <dd className="mt-0.5 font-medium text-[#345248]">
+                          {formatTanggal(item.peserta.tanggalDaftar)}
+                        </dd>
+                      </div>
+                    )}
                   </dl>
 
+                  {role === "juri" && (
+                    <div className="mb-3 grid gap-2 sm:grid-cols-2">
+                      {JURI_CONTOH.filter(
+                        (juri) => juri.kategori === JURI_AKTIF.kategori,
+                      ).map((juri) => {
+                        const review = statusTinjauanJuri(item.karya.id, juri.id);
+                        return (
+                          <p
+                            key={juri.id}
+                            className="rounded-md bg-[#f7faf8] px-3 py-2 text-[11px] text-[#52766a]"
+                          >
+                            {juri.nama}:{" "}
+                            {review === "sudah"
+                              ? "Sudah ditinjau"
+                              : review === "sedang"
+                                ? "Sedang ditinjau"
+                                : "Belum ditinjau"}
+                          </p>
+                        );
+                      })}
+                    </div>
+                  )}
                   {role === "panitia" && (
                     <div className="rounded-md border-l-[3px] border-[#00b78b] bg-[#eafbf4] px-3 py-2 text-xs text-[#52766a]">
                       Berkas demo tersedia untuk ditinjau.

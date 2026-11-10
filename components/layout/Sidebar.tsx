@@ -3,7 +3,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { Suspense, useState, type ReactNode } from "react";
+import { JURI_AKTIF } from "@/lib/juri-contoh";
 
 type Role = "panitia" | "juri";
 type IconName = "dashboard" | "people" | "document" | "award" | "trophy";
@@ -73,10 +74,38 @@ const ROLE_MENUS: ReadonlyArray<{ role: Role; groups: MenuGroup[] }> = [
         items: [
           {
             label: "Kandidat Pemenang",
-            href: "/panitia/kandidat",
+            href: "/panitia/kandidat/cerita",
             icon: "award",
+            subItems: [
+              {
+                label: "Cerita HAM",
+                href: "/panitia/kandidat/cerita",
+                category: "cerita",
+              },
+              {
+                label: "Komik Bergambar",
+                href: "/panitia/kandidat/komik",
+                category: "komik",
+              },
+            ],
           },
-          { label: "Pemenang", href: "/panitia/pemenang", icon: "trophy" },
+          {
+            label: "Pemenang",
+            href: "/panitia/pemenang/cerita",
+            icon: "trophy",
+            subItems: [
+              {
+                label: "Cerita HAM",
+                href: "/panitia/pemenang/cerita",
+                category: "cerita",
+              },
+              {
+                label: "Komik Bergambar",
+                href: "/panitia/pemenang/komik",
+                category: "komik",
+              },
+            ],
+          },
         ],
       },
     ],
@@ -87,20 +116,21 @@ const ROLE_MENUS: ReadonlyArray<{ role: Role; groups: MenuGroup[] }> = [
       {
         title: "PENILAIAN",
         items: [
-          { label: "Dashboard", href: "/juri", icon: "dashboard" },
-          { label: "Daftar Karya", href: "/juri/kandidat", icon: "document" },
-        ],
-      },
-      {
-        title: "PEMENANG",
-        items: [
+          {
+            label: "Daftar Karya Peserta",
+            href: "/juri/karya",
+            icon: "document",
+          },
           {
             label: "Kandidat Pemenang",
             href: "/juri/kandidat",
             icon: "award",
           },
-          { label: "Pemenang", href: "/juri/pemenang", icon: "trophy" },
         ],
+      },
+      {
+        title: "PEMENANG",
+        items: [{ label: "Pemenang", href: "/juri/pemenang", icon: "trophy" }],
       },
     ],
   },
@@ -178,6 +208,8 @@ function Navigation({ role, onNavigate }: { role: Role; onNavigate?: () => void 
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const requestedCategory = searchParams.get("kategori");
+  const isCandidateReview = searchParams.get("dari") === "kandidat";
+  const isWinnerReview = searchParams.get("dari") === "pemenang";
   const menu = ROLE_MENUS.find((item) => item.role === role);
 
   return (
@@ -198,7 +230,13 @@ function Navigation({ role, onNavigate }: { role: Role; onNavigate?: () => void 
                     (subItem) =>
                       pathname === subItem.href ||
                       pathname.startsWith(`${subItem.href}/`),
-                  )
+                  ) ||
+                  (role === "panitia" &&
+                    item.href === "/panitia/kandidat/cerita" &&
+                    isCandidateReview) ||
+                  (role === "panitia" &&
+                    item.href === "/panitia/pemenang/cerita" &&
+                    isWinnerReview)
                 : isActive;
 
               return (
@@ -277,13 +315,21 @@ export default function Sidebar({ role }: { role: Role }) {
       <aside className="sticky top-0 hidden h-screen w-[248px] shrink-0 flex-col border-r border-[#e5ebe8] bg-white md:flex">
         <Brand />
         <div className="mt-4">
-          <Navigation role={role} />
+          <Suspense fallback={null}>
+            <Navigation role={role} />
+          </Suspense>
         </div>
         <div className="mt-auto border-t border-[#edf0ee] p-4">
           <p className="text-[13px] font-semibold text-[#344b44]">
-            {role === "panitia" ? "Panitia" : "Juri"}
+            {role === "panitia" ? "Panitia" : JURI_AKTIF.nama}
           </p>
-          <p className="mt-0.5 text-[11px] text-[#87938f]">Admin Kemenham</p>
+          <p className="mt-0.5 text-[11px] text-[#87938f]">
+            {role === "panitia"
+              ? "Admin Kemenham"
+              : JURI_AKTIF.kategori === "cerita"
+                ? "Juri Cerita HAM"
+                : "Juri Komik Bergambar"}
+          </p>
           <button
             type="button"
             className="mt-3 flex w-full items-center justify-center rounded-lg border border-[#dfe6e2] px-3 py-2 text-xs font-semibold text-[#465e56] transition hover:bg-[#f6f8f7]"
@@ -322,13 +368,22 @@ export default function Sidebar({ role }: { role: Role }) {
         </div>
         {isMobileOpen && (
           <div className="max-h-[calc(100vh-72px)] overflow-y-auto border-t border-[#edf0ee] py-4">
-            <Navigation role={role} onNavigate={() => setIsMobileOpen(false)} />
+            <Suspense fallback={null}>
+              <Navigation
+                role={role}
+                onNavigate={() => setIsMobileOpen(false)}
+              />
+            </Suspense>
             <div className="mx-4 mt-2 border-t border-[#edf0ee] pt-3">
               <p className="text-[13px] font-semibold text-[#344b44]">
-                {role === "panitia" ? "Panitia" : "Juri"}
+                {role === "panitia" ? "Panitia" : JURI_AKTIF.nama}
               </p>
               <p className="mt-0.5 text-[11px] text-[#87938f]">
-                Admin Kemenham
+                {role === "panitia"
+                  ? "Admin Kemenham"
+                  : JURI_AKTIF.kategori === "cerita"
+                    ? "Juri Cerita HAM"
+                    : "Juri Komik Bergambar"}
               </p>
               <button
                 type="button"

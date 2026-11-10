@@ -2,48 +2,157 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { formatTanggal } from "@/lib/format-tanggal";
 import { getStatusLabel, getStatusStyle, STATUS_KARYA } from "@/lib/status";
 import { useStatusKarya } from "@/lib/review-status";
+import {
+  ATURAN_LOMBA,
+  HEARTBEAT_DETIK,
+} from "@/lib/aturan-lomba";
+import { JURI_AKTIF, JURI_CONTOH } from "@/lib/juri-contoh";
+import {
+  akhiriTinjau,
+  batalkanKandidat,
+  batalkanSudahDitinjau,
+  daftarJuriKandidat,
+  jadikanKandidat,
+  kirimDetak,
+  mulaiTinjau,
+  jumlahKandidatKategori,
+  statusTinjauanJuri,
+  tandaiSudahDitinjau,
+  useStateJuri,
+  waktuTinjauanJuri,
+} from "@/lib/state-juri";
+import Notifikasi, { useNotifikasi } from "@/components/ui/Notifikasi";
 import type { StatusKarya } from "@/types/karya";
 import type { KaryaDaftarItem } from "./KaryaCategoryList";
 
 type TinjauKaryaProps = {
   item: KaryaDaftarItem;
   role?: "panitia" | "juri";
+  readOnly?: boolean;
+  readOnlySource?: "kandidat" | "pemenang";
 };
-
-function formatTanggal(tanggal: string): string {
-  return new Date(`${tanggal}T00:00:00`).toLocaleDateString("id-ID", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
-}
 
 export default function TinjauKarya({
   item,
   role = "panitia",
+  readOnly = false,
+  readOnlySource = "kandidat",
 }: TinjauKaryaProps) {
   const karya = useMemo(() => [item.karya], [item.karya]);
   const { statuses, setStatus, ready, error } = useStatusKarya(karya);
   const status = statuses[item.karya.id] ?? item.karya.status;
   const [draftStatus, setDraftStatus] = useState<StatusKarya>(item.karya.status);
   const [saved, setSaved] = useState(false);
+  const { error: stateJuriError } = useStateJuri();
+  const [trackingError, setTrackingError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [confirmCancelCandidate, setConfirmCancelCandidate] = useState(false);
+  const { notifikasi, tampilkanNotifikasi, tutupNotifikasi } = useNotifikasi();
   const kategoriJudul =
-    item.peserta.kategori === "cerita" ? "Cerita HAM" : "Lomba Komik Bergambar";
-  const karyaBaseHref = role === "panitia" ? "/panitia/karya" : "/juri/karya";
-  const backHref =
     item.peserta.kategori === "cerita"
+      ? "Cerita HAM"
+      : role === "juri"
+        ? "Komik Bergambar"
+        : "Lomba Komik Bergambar";
+  const karyaBaseHref = role === "panitia" ? "/panitia/karya" : "/juri/karya";
+  const backHref = readOnly
+    ? `/panitia/${readOnlySource}/${item.peserta.kategori}`
+    : role === "juri" || item.peserta.kategori === "cerita"
       ? karyaBaseHref
       : `${karyaBaseHref}/komik`;
   const visibleFiles =
-    role === "juri"
+    role === "juri" || readOnly
       ? item.berkas.filter((file) => file.jenis === "karya")
       : item.berkas;
   const statusStyle = getStatusStyle(status);
+  const juriKategori = JURI_CONTOH.filter(
+    (juri) => juri.kategori === item.peserta.kategori,
+  );
+  const statusAktif =
+    role === "juri"
+      ? statusTinjauanJuri(item.karya.id, JURI_AKTIF.id)
+      : "belum";
+  const juriPemilih = daftarJuriKandidat(item.karya.id);
+  const sudahDipilihAktif = juriPemilih.some(
+    (juri) => juri.id === JURI_AKTIF.id,
+  );
+  const sudahKandidat = juriPemilih.length > 0;
+  const dipilihJuriLain = juriPemilih.filter(
+    (juri) => juri.id !== JURI_AKTIF.id,
+  );
+  const jumlahKandidat = jumlahKandidatKategori(item.peserta.kategori);
+  const kuotaPenuh =
+    jumlahKandidat >= ATURAN_LOMBA[item.peserta.kategori].batasKandidat;
+  useEffect(() => {
+    if (role !== "juri" || !ready || status !== "diverifikasi") {
+      return;
+    }
+
+    let intervalId: number | undefined;
+    const stopHeartbeat = () => {
+      if (intervalId !== undefined) {
+        window.clearInterval(intervalId);
+        intervalId = undefined;
+      }
+    };
+    const startTracking = () => {
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+      try {
+        mulaiTinjau(item.karya.id, JURI_AKTIF.id);
+        if (intervalId === undefined) {
+          intervalId = window.setInterval(() => {
+            if (document.visibilityState === "visible") {
+              try {
+                kirimDetak(item.karya.id, JURI_AKTIF.id);
+              } catch (cause) {
+                setTrackingError(
+                  cause instanceof Error
+                    ? cause.message
+                    : "Gagal mengirim detak tinjauan.",
+                );
+              }
+            }
+          }, HEARTBEAT_DETIK * 1000);
+        }
+        setTrackingError("");
+      } catch (cause) {
+        setTrackingError(
+          cause instanceof Error
+            ? cause.message
+            : "Gagal memulai tinjauan juri.",
+        );
+      }
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        startTracking();
+      } else {
+        stopHeartbeat();
+      }
+    };
+
+    startTracking();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      stopHeartbeat();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      try {
+        if (statusTinjauanJuri(item.karya.id, JURI_AKTIF.id) === "sedang") {
+          akhiriTinjau(item.karya.id, JURI_AKTIF.id);
+        }
+      } catch (cause) {
+        console.error("Gagal mengakhiri tinjauan juri.", cause);
+      }
+    };
+  }, [item.karya.id, ready, role, status]);
 
   useEffect(() => {
-    if (!ready) {
+    if (!ready || readOnly) {
       return;
     }
     const timeoutId = window.setTimeout(() => {
@@ -55,7 +164,7 @@ export default function TinjauKarya({
       }
     }, 0);
     return () => window.clearTimeout(timeoutId);
-  }, [item.karya.id, ready, role, setStatus, status]);
+  }, [item.karya.id, readOnly, ready, role, setStatus, status]);
 
   function saveDecision() {
     if (setStatus(item.karya.id, draftStatus)) {
@@ -65,9 +174,56 @@ export default function TinjauKarya({
     }
   }
 
+  function toggleSudahDitinjau() {
+    try {
+      if (statusAktif === "sudah") {
+        batalkanSudahDitinjau(item.karya.id, JURI_AKTIF.id);
+      } else {
+        tandaiSudahDitinjau(item.karya.id, JURI_AKTIF.id);
+        tampilkanNotifikasi("Karya ditandai sudah ditinjau.");
+      }
+      setActionError("");
+    } catch (cause) {
+      setActionError(
+        cause instanceof Error
+          ? cause.message
+          : "Gagal memperbarui penandaan tinjauan.",
+      );
+    }
+  }
+
+  function toggleKandidat() {
+    try {
+      if (sudahDipilihAktif) {
+        if (!confirmCancelCandidate) {
+          setConfirmCancelCandidate(true);
+          return;
+        }
+        batalkanKandidat(item.karya.id, JURI_AKTIF.id);
+        setConfirmCancelCandidate(false);
+        tampilkanNotifikasi(`${item.peserta.nama} dihapus dari kandidat.`);
+      } else {
+        jadikanKandidat(item.karya.id, JURI_AKTIF.id);
+        tampilkanNotifikasi(
+          `${item.peserta.nama} berhasil dijadikan kandidat.`,
+        );
+      }
+      setActionError("");
+    } catch (cause) {
+      setActionError(
+        cause instanceof Error
+          ? cause.message
+          : "Gagal memperbarui pilihan kandidat.",
+      );
+    }
+  }
+
   if (role === "juri" && status !== "diverifikasi") {
     return (
       <main className="mx-auto max-w-[820px]">
+        {role === "juri" && (
+          <Notifikasi notifikasi={notifikasi} onClose={tutupNotifikasi} />
+        )}
         <p className="rounded-lg border border-[#dce5e0] bg-white p-5 text-sm text-[#84918b]">
           Karya ini tidak tersedia untuk ditinjau oleh juri.
         </p>
@@ -81,7 +237,12 @@ export default function TinjauKarya({
         href={backHref}
         className="text-xs font-semibold text-[#3d7563] hover:underline"
       >
-        ← Kembali ke {kategoriJudul}
+        ← Kembali ke{" "}
+        {readOnly
+          ? readOnlySource === "pemenang"
+            ? "Pemenang"
+            : "Kandidat Pemenang"
+          : kategoriJudul}
       </Link>
 
       <header className="mb-5 mt-5">
@@ -169,7 +330,7 @@ export default function TinjauKarya({
             </div>
           </div>
 
-          {role === "panitia" && (
+          {role === "panitia" && !readOnly && (
             <div className="mt-5 border-t border-[#e8eeea] pt-5">
               <h2 className="text-sm font-bold text-[#29463d]">
                 Keputusan tinjauan
@@ -216,6 +377,147 @@ export default function TinjauKarya({
                 </p>
               )}
             </div>
+          )}
+
+          {role === "juri" && (
+            <section className="mt-5 border-t border-[#e8eeea] pt-5">
+              <h2 className="text-sm font-bold text-[#29463d]">
+                Penandaan juri
+              </h2>
+              <p className="mt-1 text-xs text-[#84918b]">
+                Setiap juri memiliki penanda tinjauan masing-masing.
+              </p>
+              <ul className="mt-3 space-y-2">
+                {juriKategori.map((juri) => {
+                  const reviewStatus = statusTinjauanJuri(
+                    item.karya.id,
+                    juri.id,
+                  );
+                  const waktu = waktuTinjauanJuri(item.karya.id, juri.id);
+                  const waktuStatus =
+                    reviewStatus === "sudah"
+                      ? waktu?.selesaiPada
+                      : reviewStatus === "sedang"
+                        ? waktu?.terakhirAktif
+                        : null;
+                  return (
+                    <li
+                      key={juri.id}
+                      className={`rounded-lg border px-3 py-3 text-xs ${
+                        juri.id === JURI_AKTIF.id
+                          ? "border-[#9cc8b4] bg-[#f0f8f3]"
+                          : "border-[#e2e9e5] bg-white"
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-semibold text-[#345248]">
+                          {juri.nama}
+                          {juri.id === JURI_AKTIF.id ? " (Anda)" : ""}
+                        </span>
+                        <span className="text-[#52766a]">
+                          {reviewStatus === "sudah"
+                            ? "Sudah ditinjau"
+                            : reviewStatus === "sedang"
+                              ? "Sedang ditinjau"
+                              : "Belum ditinjau"}
+                        </span>
+                      </div>
+                      {waktuStatus && (
+                        <p className="mt-1 text-[11px] text-[#84918b]">
+                          {reviewStatus === "sudah"
+                            ? "Selesai"
+                            : "Aktif terakhir"}{" "}
+                          {formatTanggal(waktuStatus.slice(0, 10))} pukul{" "}
+                          {new Date(waktuStatus).toLocaleTimeString("id-ID", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+
+              <button
+                type="button"
+                aria-pressed={statusAktif === "sudah"}
+                onClick={toggleSudahDitinjau}
+                className={`mt-4 inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-xs font-semibold transition ${
+                  statusAktif === "sudah"
+                    ? "border-[#9cc8b4] bg-[#eafbf4] text-[#24724f]"
+                    : "border-[#dfe6e2] bg-white text-[#345248] hover:bg-[#f5faf7]"
+                }`}
+              >
+                <span aria-hidden="true">✓</span>
+                {statusAktif === "sudah"
+                  ? "Batalkan tanda sudah ditinjau"
+                  : "Tandai sudah ditinjau"}
+              </button>
+
+              {dipilihJuriLain.length > 0 && (
+                <p className="mt-3 rounded-md bg-[#f7faf8] px-3 py-2 text-xs text-[#52766a]">
+                  Sudah dipilih {dipilihJuriLain.map((juri) => juri.nama).join(", ")}; pilihanmu tidak memakai kuota tambahan.
+                </p>
+              )}
+
+              <div className="mt-3">
+                {confirmCancelCandidate ? (
+                  <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[#f0d7b8] bg-[#fffaf2] p-3">
+                    <span className="mr-1 text-xs text-[#755527]">
+                      Batalkan pilihan kandidat?
+                    </span>
+                    <button
+                      type="button"
+                      onClick={toggleKandidat}
+                      className="rounded-md bg-[#9e5337] px-3 py-2 text-xs font-semibold text-white hover:bg-[#84432d]"
+                    >
+                      Ya, batalkan
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmCancelCandidate(false)}
+                      className="rounded-md border border-[#dfe6e2] px-3 py-2 text-xs font-semibold text-[#52675f]"
+                    >
+                      Jangan batalkan
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={toggleKandidat}
+                    disabled={
+                      !sudahDipilihAktif &&
+                      (statusAktif !== "sudah" ||
+                        (kuotaPenuh && !sudahKandidat))
+                    }
+                    className="rounded-lg bg-[#245c4f] px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-[#19483e] disabled:cursor-not-allowed disabled:bg-[#dfe6e2] disabled:text-[#84918b]"
+                  >
+                    {sudahDipilihAktif
+                      ? "Batalkan kandidat"
+                      : "Jadikan kandidat"}
+                  </button>
+                )}
+              </div>
+              {!sudahDipilihAktif && statusAktif !== "sudah" && (
+                <p className="mt-2 text-xs text-[#84918b]">
+                  Tandai sudah ditinjau terlebih dahulu
+                </p>
+              )}
+              {!sudahDipilihAktif &&
+                statusAktif === "sudah" &&
+                kuotaPenuh &&
+                !sudahKandidat && (
+                  <p className="mt-2 text-xs text-[#a75c20]">
+                    Kuota kandidat penuh
+                  </p>
+                )}
+              {(error || stateJuriError || trackingError || actionError) && (
+                <p role="alert" className="mt-3 text-xs font-medium text-[#a33340]">
+                  {error || stateJuriError || trackingError || actionError}
+                </p>
+              )}
+            </section>
           )}
         </div>
       </section>

@@ -1,3 +1,4 @@
+import { ATURAN_LOMBA } from "@/lib/aturan-lomba";
 import type {
   Karya,
   KategoriLomba,
@@ -251,6 +252,166 @@ export const pesertaContoh: Peserta[] = [
     tanggalDaftar: "2026-10-26",
     urlKartu: URL_KARTU_DEMO,
   },
+  {
+    id: "p-025",
+    nama: "Nadia Permatasari",
+    asal: "Universitas Negeri Yogyakarta",
+    email: "nadia.permatasari@example.test",
+    whatsapp: "0812-3400-0025",
+    kategori: "cerita",
+    tanggalDaftar: "2026-10-27",
+    urlKartu: URL_KARTU_DEMO,
+  },
+  {
+    id: "p-026",
+    nama: "Rafi Pratama",
+    asal: "SMA Negeri 2 Surakarta",
+    email: "rafi.pratama@example.test",
+    whatsapp: "0812-3400-0026",
+    kategori: "komik",
+    tanggalDaftar: "2026-10-28",
+    urlKartu: URL_KARTU_DEMO,
+  },
+  {
+    id: "p-027",
+    nama: "Dewi Anggraini",
+    asal: "Universitas Negeri Malang",
+    email: "dewi.anggraini@example.test",
+    whatsapp: "0812-3400-0027",
+    kategori: "cerita",
+    tanggalDaftar: "2026-10-29",
+    urlKartu: URL_KARTU_DEMO,
+  },
+  {
+    id: "p-028",
+    nama: "Yoga Firmansyah",
+    asal: "SMA Negeri 1 Cirebon",
+    email: "yoga.firmansyah@example.test",
+    whatsapp: "0812-3400-0028",
+    kategori: "komik",
+    tanggalDaftar: "2026-10-30",
+    urlKartu: URL_KARTU_DEMO,
+  },
+  {
+    id: "p-029",
+    nama: "Siti Rahmawati",
+    asal: "Universitas Negeri Semarang",
+    email: "siti.rahmawati@example.test",
+    whatsapp: "0812-3400-0029",
+    kategori: "cerita",
+    tanggalDaftar: "2026-10-31",
+    urlKartu: URL_KARTU_DEMO,
+  },
+  {
+    id: "p-030",
+    nama: "Arman Setiawan",
+    asal: "SMA Negeri 4 Bandung",
+    email: "arman.setiawan@example.test",
+    whatsapp: "0812-3400-0030",
+    kategori: "komik",
+    tanggalDaftar: "2026-11-01",
+    urlKartu: URL_KARTU_DEMO,
+  },
+  {
+    id: "p-031",
+    nama: "Laras Wulandari",
+    asal: "Universitas Jenderal Soedirman",
+    email: "laras.wulandari@example.test",
+    whatsapp: "0812-3400-0031",
+    kategori: "cerita",
+    tanggalDaftar: "2026-11-02",
+    urlKartu: URL_KARTU_DEMO,
+  },
+  {
+    id: "p-032",
+    nama: "Rizal Kurniawan",
+    asal: "SMA Negeri 5 Bogor",
+    email: "rizal.kurniawan@example.test",
+    whatsapp: "0812-3400-0032",
+    kategori: "komik",
+    tanggalDaftar: "2026-11-03",
+    urlKartu: URL_KARTU_DEMO,
+  },
+  {
+    id: "p-033",
+    nama: "Mira Kusuma",
+    asal: "Universitas Negeri Surabaya",
+    email: "mira.kusuma@example.test",
+    whatsapp: "0812-3400-0033",
+    kategori: "cerita",
+    tanggalDaftar: "2026-11-04",
+    urlKartu: URL_KARTU_DEMO,
+  },
+  {
+    id: "p-034",
+    nama: "Ilham Nugraha",
+    asal: "SMA Negeri 3 Malang",
+    email: "ilham.nugraha@example.test",
+    whatsapp: "0812-3400-0034",
+    kategori: "komik",
+    tanggalDaftar: "2026-11-05",
+    urlKartu: URL_KARTU_DEMO,
+  },
+  {
+    id: "p-035",
+    nama: "Rina Safitri",
+    asal: "Universitas Negeri Padang",
+    email: "rina.safitri@example.test",
+    whatsapp: "0812-3400-0035",
+    kategori: "cerita",
+    tanggalDaftar: "2026-11-06",
+    urlKartu: URL_KARTU_DEMO,
+  },
+  {
+    id: "p-036",
+    nama: "Fikri Ramadhan",
+    asal: "SMA Negeri 1 Sukabumi",
+    email: "fikri.ramadhan@example.test",
+    whatsapp: "0812-3400-0036",
+    kategori: "komik",
+    tanggalDaftar: "2026-11-07",
+    urlKartu: URL_KARTU_DEMO,
+  },
+  {
+    id: "p-037",
+    nama: "Tania Putri",
+    asal: "Universitas Negeri Medan",
+    email: "tania.putri@example.test",
+    whatsapp: "0812-3400-0037",
+    kategori: "cerita",
+    tanggalDaftar: "2026-11-08",
+    urlKartu: URL_KARTU_DEMO,
+  },
+  {
+    id: "p-038",
+    nama: "Rangga Wijaya",
+    asal: "SMA Negeri 2 Purwokerto",
+    email: "rangga.wijaya@example.test",
+    whatsapp: "0812-3400-0038",
+    kategori: "komik",
+    tanggalDaftar: "2026-11-09",
+    urlKartu: URL_KARTU_DEMO,
+  },
+  {
+    id: "p-039",
+    nama: "Vina Maharani",
+    asal: "Universitas Negeri Jakarta",
+    email: "vina.maharani@example.test",
+    whatsapp: "0812-3400-0039",
+    kategori: "cerita",
+    tanggalDaftar: "2026-11-10",
+    urlKartu: URL_KARTU_DEMO,
+  },
+  {
+    id: "p-040",
+    nama: "Doni Saputra",
+    asal: "SMA Negeri 6 Bandung",
+    email: "doni.saputra@example.test",
+    whatsapp: "0812-3400-0040",
+    kategori: "komik",
+    tanggalDaftar: "2026-11-11",
+    urlKartu: URL_KARTU_DEMO,
+  },
 ];
 
 const statusContoh: readonly Karya["status"][] = [
@@ -278,15 +439,129 @@ const statusContoh: readonly Karya["status"][] = [
   "menunggu",
   "diverifikasi",
   "ditolak",
+  "menunggu",
+  "menunggu",
+  "ditolak",
+  "menunggu",
+  "diproses",
+  "menunggu",
+  "ditolak",
+  "menunggu",
+  "diproses",
+  "menunggu",
+  "ditolak",
+  "menunggu",
+  "diverifikasi",
+  "diverifikasi",
+  "diverifikasi",
+  "diverifikasi",
+  "diverifikasi",
 ];
 
-export const karyaContoh: Karya[] = pesertaContoh.map((peserta, index) => ({
-  id: `k-${String(index + 1).padStart(3, "0")}`,
-  pesertaId: peserta.id,
-  status: statusContoh[index],
-  urlKarya: URL_KARYA_DEMO,
-  urlPernyataan: URL_PERNYATAAN_DEMO,
-}));
+const pilihanJuriContoh: Readonly<Record<string, string[]>> = {
+  "p-002": ["Juri Komik A"],
+  "p-006": ["Juri Komik B", "Juri Komik A"],
+  "p-010": ["Juri Komik A"],
+  "p-013": ["Juri Cerita A", "Juri Cerita B"],
+  "p-017": ["Juri Cerita B"],
+  "p-020": ["Juri Komik A"],
+  "p-023": ["Juri Cerita A"],
+  "p-025": ["Juri Cerita A"],
+  "p-026": ["Juri Komik A", "Juri Komik B"],
+  "p-027": ["Juri Cerita B"],
+  "p-028": ["Juri Komik B"],
+  "p-029": ["Juri Cerita A", "Juri Cerita B"],
+  "p-030": ["Juri Komik A"],
+  "p-031": ["Juri Cerita B"],
+  "p-032": ["Juri Komik A", "Juri Komik B"],
+  "p-033": ["Juri Cerita A"],
+  "p-034": ["Juri Komik B"],
+  "p-035": ["Juri Cerita A", "Juri Cerita B"],
+  "p-036": ["Juri Komik A"],
+};
+
+const peringkatContoh: Readonly<
+  Record<string, { peringkat: number; ditetapkanOleh: string }>
+> = {
+  "p-013": { peringkat: 1, ditetapkanOleh: "Juri Cerita A" },
+  "p-017": { peringkat: 2, ditetapkanOleh: "Juri Cerita B" },
+  "p-023": { peringkat: 3, ditetapkanOleh: "Juri Cerita A" },
+  "p-025": { peringkat: 4, ditetapkanOleh: "Juri Cerita B" },
+  "p-027": { peringkat: 5, ditetapkanOleh: "Juri Cerita A" },
+  "p-029": { peringkat: 6, ditetapkanOleh: "Juri Cerita B" },
+  "p-002": { peringkat: 1, ditetapkanOleh: "Juri Komik A" },
+  "p-006": { peringkat: 2, ditetapkanOleh: "Juri Komik B" },
+  "p-010": { peringkat: 3, ditetapkanOleh: "Juri Komik A" },
+};
+
+export const karyaContoh: Karya[] = pesertaContoh.map((peserta, index) => {
+  const dipilihOleh = pilihanJuriContoh[peserta.id] ?? [];
+  const penetapan = peringkatContoh[peserta.id];
+  return {
+    id: `k-${String(index + 1).padStart(3, "0")}`,
+    pesertaId: peserta.id,
+    status: dipilihOleh.length > 0 ? "diverifikasi" : statusContoh[index],
+    tahap: dipilihOleh.length > 0 ? "kandidat" : "biasa",
+    dipilihOleh,
+    ditandaiPada: new Date(
+      Date.UTC(2026, 9, index + 1, 8),
+    ).toISOString(),
+    peringkat: penetapan?.peringkat ?? null,
+    ditetapkanOleh: penetapan?.ditetapkanOleh ?? null,
+    ditetapkanPada: penetapan
+      ? new Date(Date.UTC(2026, 10, penetapan.peringkat, 9)).toISOString()
+      : null,
+    urlKarya: URL_KARYA_DEMO,
+    urlPernyataan: URL_PERNYATAAN_DEMO,
+  };
+});
+
+export type KandidatContoh = {
+  karya: Pick<
+    Karya,
+    "id" | "status" | "tahap" | "dipilihOleh" | "ditandaiPada"
+  >;
+  peserta: Pick<Peserta, "id" | "nama" | "asal" | "kategori">;
+};
+
+export function getKandidatByKategori(
+  kategori: KategoriLomba,
+): KandidatContoh[] {
+  const pesertaById = new Map(
+    pesertaContoh.map((peserta) => [peserta.id, peserta]),
+  );
+  // TODO: hanya karya berstatus diverifikasi; nantinya juga dijaga oleh RLS Supabase.
+  return karyaContoh
+    .filter(
+      (karya) => karya.tahap === "kandidat" && karya.status === "diverifikasi",
+    )
+    .flatMap((karya) => {
+      const peserta = pesertaById.get(karya.pesertaId);
+      if (!peserta || peserta.kategori !== kategori) {
+        return [];
+      }
+      const { id, nama, asal, kategori: kategoriPeserta } = peserta;
+      const { status, tahap, dipilihOleh, ditandaiPada } = karya;
+      return [
+        {
+          karya: {
+            id: karya.id,
+            status,
+            tahap,
+            dipilihOleh,
+            ditandaiPada,
+          },
+          peserta: { id, nama, asal, kategori: kategoriPeserta },
+        },
+      ];
+    })
+    .sort(
+      (first, second) =>
+        new Date(first.karya.ditandaiPada).getTime() -
+        new Date(second.karya.ditandaiPada).getTime(),
+    )
+    .slice(0, ATURAN_LOMBA[kategori].batasKandidat);
+}
 
 export function getPesertaDashboardByKategori(
   kategori: KategoriLomba,
