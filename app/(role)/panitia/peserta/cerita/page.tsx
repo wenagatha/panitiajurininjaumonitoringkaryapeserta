@@ -1,7 +1,9 @@
 import TabelPesertaKategori from "@/components/dashboard/TabelPesertaKategori";
-import { getPesertaDashboardByKategori } from "@/lib/data-contoh";
+import { getPanitiaPesertaByKategori } from "@/lib/panitia-peserta";
 
-export default function PanitiaPesertaPage() {
+export default async function PanitiaPesertaPage() {
+  const rows = await getPanitiaPesertaByKategori("cerita");
+
   return (
     <main>
       <header className="mb-5">
@@ -15,7 +17,7 @@ export default function PanitiaPesertaPage() {
           Lihat peserta yang terdaftar pada lomba Cerita HAM.
         </p>
       </header>
-      <TabelPesertaKategori rows={getPesertaDashboardByKategori("cerita")} />
+      <TabelPesertaKategori rows={rows} />
     </main>
   );
 }

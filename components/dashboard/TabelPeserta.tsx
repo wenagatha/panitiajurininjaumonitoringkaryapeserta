@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { getStatusLabel, getStatusStyle } from "@/lib/status";
-import { useStatusKarya } from "@/lib/review-status";
 import type {
   KategoriLomba,
   PesertaDashboardRingkas,
@@ -27,8 +26,6 @@ export default function TabelPeserta({
   const [query, setQuery] = useState("");
   const [filterKategori, setFilterKategori] =
     useState<FilterKategori>("semua");
-  const karya = useMemo(() => rows.map((row) => row.karya), [rows]);
-  const { statuses, error } = useStatusKarya(karya);
 
   const filteredRows = useMemo(() => {
     const searchTerm = query.trim().toLocaleLowerCase("id-ID");
@@ -80,9 +77,6 @@ export default function TabelPeserta({
           <option value="komik">Lomba Komik</option>
         </select>
       </div>
-      {error && (
-        <p role="alert" className="mt-3 text-xs text-[#a33340]">{error}</p>
-      )}
       <div className="mt-4 overflow-x-auto">
         <table className="w-full min-w-[640px] border-collapse text-left">
           <thead>
@@ -95,7 +89,7 @@ export default function TabelPeserta({
           </thead>
           <tbody>
             {filteredRows.map((row) => {
-              const status = statuses[row.karya.id] ?? row.karya.status;
+              const status = row.karya.status;
               const statusStyle = getStatusStyle(status);
               return (
                 <tr

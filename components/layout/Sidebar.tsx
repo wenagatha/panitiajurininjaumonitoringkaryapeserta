@@ -2,11 +2,10 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useState, type ReactNode } from "react";
-import { JURI_CONTOH } from "@/lib/juri-contoh";
 import { useJuriAktif } from "@/components/juri/JuriAktifProvider";
-import { ubahJuriAktif } from "@/lib/juri-aktif-actions";
+import { signOutAction } from "@/lib/auth-actions";
 
 type Role = "panitia" | "juri";
 type IconName = "dashboard" | "people" | "document" | "award" | "trophy";
@@ -311,23 +310,6 @@ function Navigation({ role, onNavigate }: { role: Role; onNavigate?: () => void 
 
 function JuriSidebarProfile() {
   const juriAktif = useJuriAktif();
-  const router = useRouter();
-  const [error, setError] = useState("");
-
-  async function changeJuri(id: string) {
-    try {
-      await ubahJuriAktif(id);
-      setError("");
-      router.push("/juri/karya");
-      router.refresh();
-    } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "Mode demo juri gagal diperbarui.",
-      );
-    }
-  }
 
   return (
     <>
@@ -339,58 +321,52 @@ function JuriSidebarProfile() {
           ? "Juri Cerita HAM"
           : "Juri Komik Bergambar"}
       </p>
-      <label className="mt-3 block text-[10px] font-medium text-[#718079]">
-        Mode demo: pilih juri
-        <select
-          value={juriAktif.id}
-          onChange={(event) => void changeJuri(event.target.value)}
-          className="mt-1 h-9 w-full rounded-lg border border-[#dfe6e2] bg-white px-2 text-xs text-[#465e56] outline-none focus:border-[#6b9b86]"
+      <form action={signOutAction}>
+        <button
+          type="submit"
+          className="mt-3 flex w-full items-center justify-center rounded-lg border border-[#dfe6e2] px-3 py-2 text-xs font-semibold text-[#465e56] transition hover:bg-[#f6f8f7]"
         >
-          {JURI_CONTOH.map((juri) => (
-            <option key={juri.id} value={juri.id}>
-              {juri.nama}
-            </option>
-          ))}
-        </select>
-      </label>
-      {/* TODO: hapus pemilih demo saat Supabase Auth dipakai. */}
-      {error && (
-        <p role="alert" className="mt-2 text-[10px] text-[#a33340]">
-          {error}
-        </p>
-      )}
-      <button
-        type="button"
-        className="mt-3 flex w-full items-center justify-center rounded-lg border border-[#dfe6e2] px-3 py-2 text-xs font-semibold text-[#465e56] transition hover:bg-[#f6f8f7]"
-        // TODO: sambungkan ke Supabase signOut.
-      >
-        Keluar
-      </button>
+          Keluar
+        </button>
+      </form>
     </>
   );
 }
 
-function SidebarProfile({ role }: { role: Role }) {
+function SidebarProfile({
+  role,
+  displayName,
+}: {
+  role: Role;
+  displayName: string;
+}) {
   if (role === "juri") {
     return <JuriSidebarProfile />;
   }
 
   return (
     <>
-      <p className="text-[13px] font-semibold text-[#344b44]">Panitia</p>
+      <p className="text-[13px] font-semibold text-[#344b44]">{displayName}</p>
       <p className="mt-0.5 text-[11px] text-[#87938f]">Admin Kemenham</p>
-      <button
-        type="button"
-        className="mt-3 flex w-full items-center justify-center rounded-lg border border-[#dfe6e2] px-3 py-2 text-xs font-semibold text-[#465e56] transition hover:bg-[#f6f8f7]"
-        // TODO: sambungkan ke Supabase signOut.
-      >
-        Keluar
-      </button>
+      <form action={signOutAction}>
+        <button
+          type="submit"
+          className="mt-3 flex w-full items-center justify-center rounded-lg border border-[#dfe6e2] px-3 py-2 text-xs font-semibold text-[#465e56] transition hover:bg-[#f6f8f7]"
+        >
+          Keluar
+        </button>
+      </form>
     </>
   );
 }
 
-export default function Sidebar({ role }: { role: Role }) {
+export default function Sidebar({
+  role,
+  displayName,
+}: {
+  role: Role;
+  displayName: string;
+}) {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
   return (
@@ -403,7 +379,7 @@ export default function Sidebar({ role }: { role: Role }) {
           </Suspense>
         </div>
         <div className="mt-auto border-t border-[#edf0ee] p-4">
-          <SidebarProfile role={role} />
+          <SidebarProfile role={role} displayName={displayName} />
         </div>
       </aside>
 
@@ -442,7 +418,7 @@ export default function Sidebar({ role }: { role: Role }) {
               />
             </Suspense>
             <div className="mx-4 mt-2 border-t border-[#edf0ee] pt-3">
-              <SidebarProfile role={role} />
+              <SidebarProfile role={role} displayName={displayName} />
             </div>
           </div>
         )}

@@ -4,12 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ATURAN_LOMBA } from "@/lib/aturan-lomba";
 import { formatTanggal } from "@/lib/format-tanggal";
-import { useStatusKarya } from "@/lib/review-status";
-import {
-  getKandidatKategori,
-  getPeringkatKategori,
-  useStateJuri,
-} from "@/lib/state-juri";
+import type { JuriWorkflowSnapshot } from "@/lib/juri-workflow";
 import type { KategoriLomba, StatusKarya } from "@/types/karya";
 
 type PemenangKategoriItem = {
@@ -24,6 +19,7 @@ type PemenangKategoriProps = {
   kategori: KategoriLomba;
   items: PemenangKategoriItem[];
   role?: "panitia" | "juri";
+  workflow: JuriWorkflowSnapshot;
 };
 
 const MEDAL_STYLES = [
@@ -67,38 +63,32 @@ export default function PemenangKategori({
   kategori,
   items,
   role = "panitia",
+  workflow,
 }: PemenangKategoriProps) {
   const [query, setQuery] = useState("");
   const judulKategori =
     kategori === "cerita" ? "Cerita HAM" : "Komik Bergambar";
   const aturan = ATURAN_LOMBA[kategori];
-  const karya = useMemo(() => items.map((item) => item.karya), [items]);
-  const { statuses, ready, error } = useStatusKarya(karya);
-  const { state, error: stateError } = useStateJuri();
-  const pilihanKandidat = getKandidatKategori(kategori, state);
-  const stateRanks = getPeringkatKategori(kategori, state);
-  const kandidatIds = useMemo(
-    () => new Set(pilihanKandidat.map((kandidat) => kandidat.karyaId)),
-    [pilihanKandidat],
-  );
   const itemByKaryaId = useMemo(
     () => new Map(items.map((item) => [item.karya.id, item])),
     [items],
   );
   const peringkat = useMemo(
     () =>
-      stateRanks.flatMap((rank) => {
+      workflow.ranks.flatMap((rank) => {
         const item = itemByKaryaId.get(rank.karyaId);
-        if (
-          !item ||
-          !kandidatIds.has(rank.karyaId) ||
-          (statuses[rank.karyaId] ?? item.karya.status) !== "diverifikasi"
-        ) {
+        if (!item) {
           return [];
         }
-        return [{ ...rank, peserta: item }];
+        return [
+          {
+            ...rank,
+            ditetapkanOleh: rank.ditetapkanOlehNama,
+            peserta: item,
+          },
+        ];
       }),
-    [itemByKaryaId, kandidatIds, stateRanks, statuses],
+    [itemByKaryaId, workflow.ranks],
   );
   const podiumRanks = Array.from(
     { length: aturan.jumlahJuara },
@@ -130,28 +120,8 @@ export default function PemenangKategori({
   const jumlahPeringkatLanjutan =
     aturan.jumlahPeringkat - aturan.jumlahJuara;
 
-  if (role === "juri" && !ready) {
-    return (
-      <main className="mx-auto max-w-[920px]">
-        {error && (
-          <p role="alert" className="mb-4 rounded-lg bg-[#fff0f0] px-3 py-2 text-xs text-[#a33340]">
-            {error}
-          </p>
-        )}
-        <p role="status" className="text-sm text-[#84918b]">
-          Memuat daftar karya...
-        </p>
-      </main>
-    );
-  }
-
   return (
     <main className="mx-auto max-w-[920px]">
-      {(error || stateError) && (
-        <p role="alert" className="mb-4 rounded-lg bg-[#fff0f0] px-3 py-2 text-xs text-[#a33340]">
-          {error || stateError}
-        </p>
-      )}
       <header className="mb-4">
         <h1 className="text-[22px] font-bold tracking-tight text-[#24453b]">
           Pemenang {judulKategori}

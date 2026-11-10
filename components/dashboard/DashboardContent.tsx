@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import ChartPendaftaran from "@/components/dashboard/ChartPendaftaran";
 import DonutStatus from "@/components/dashboard/DonutStatus";
 import StatCard, {
@@ -8,18 +8,14 @@ import StatCard, {
 } from "@/components/dashboard/StatCard";
 import TabelPeserta from "@/components/dashboard/TabelPeserta";
 import { STATUS_KARYA, getStatusLabel } from "@/lib/status";
-import { useStatusKarya } from "@/lib/review-status";
 import type {
-  KaryaRingkas,
   KategoriLomba,
-  PesertaRingkas,
   PesertaDashboardRingkas,
   StatusKarya,
 } from "@/types/karya";
 
 type DashboardContentProps = {
-  peserta: PesertaRingkas[];
-  karya: KaryaRingkas[];
+  rows: PesertaDashboardRingkas[];
 };
 
 const STATUS_CARDS: ReadonlyArray<{
@@ -40,42 +36,16 @@ function filterByCategory<T extends { kategori: KategoriLomba }>(
 }
 
 export default function DashboardContent({
-  peserta,
-  karya,
+  rows,
 }: DashboardContentProps) {
   const [filter, setFilter] = useState<FilterKategori>("semua");
-  const { statuses, error } = useStatusKarya(karya);
-
-  const rows = useMemo(() => {
-    const worksByParticipant = new Map(
-      karya.map((item) => [item.pesertaId, item]),
-    );
-
-    return peserta.map(
-      (person): PesertaDashboardRingkas => {
-        const record = worksByParticipant.get(person.id);
-        if (!record) {
-          throw new Error(`Karya peserta ${person.id} tidak ditemukan.`);
-        }
-        return {
-          ...person,
-          karya: { ...record, status: statuses[record.id] ?? record.status },
-        };
-      },
-    );
-  }, [karya, peserta, statuses]);
-
-  const filteredParticipants = filterByCategory(peserta, filter);
-  const filteredParticipantIds = new Set(
-    filteredParticipants.map((person) => person.id),
-  );
-  const filteredWorks = karya.filter((item) =>
-    filteredParticipantIds.has(item.pesertaId),
-  );
+  const filteredRows = filterByCategory(rows, filter);
+  const filteredParticipants = filteredRows;
+  const filteredWorks = filteredRows.map((row) => row.karya);
   const countsByStatus = STATUS_KARYA.reduce<Record<StatusKarya, number>>(
     (counts, status) => {
       counts[status.value] = filteredWorks.filter(
-        (item) => (statuses[item.id] ?? item.status) === status.value,
+        (item) => item.status === status.value,
       ).length;
       return counts;
     },
@@ -99,11 +69,6 @@ export default function DashboardContent({
 
   return (
     <>
-      {error && (
-        <p role="alert" className="mb-4 rounded-lg bg-[#fff0f0] px-3 py-2 text-xs text-[#a33340]">
-          {error}
-        </p>
-      )}
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         {statCards.map((card) => (
           <StatCard

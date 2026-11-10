@@ -1,21 +1,8 @@
 import DashboardContent from "@/components/dashboard/DashboardContent";
-import { karyaContoh, pesertaContoh } from "@/lib/data-contoh";
+import { getPanitiaDashboardRows } from "@/lib/panitia-peserta";
 
-export default function PanitiaDashboardPage() {
-  const pesertaRingkas = pesertaContoh.map(
-    ({ id, nama, asal, kategori, tanggalDaftar }) => ({
-      id,
-      nama,
-      asal,
-      kategori,
-      tanggalDaftar,
-    }),
-  );
-  const karyaRingkas = karyaContoh.map(({ id, pesertaId, status }) => ({
-    id,
-    pesertaId,
-    status,
-  }));
+export default async function PanitiaDashboardPage() {
+  const rows = await getPanitiaDashboardRows();
 
   return (
     <main>
@@ -27,7 +14,7 @@ export default function PanitiaDashboardPage() {
           Pantau pendaftaran dan karya yang masuk.
         </p>
       </header>
-      <DashboardContent peserta={pesertaRingkas} karya={karyaRingkas} />
+      <DashboardContent rows={rows} />
     </main>
   );
 }

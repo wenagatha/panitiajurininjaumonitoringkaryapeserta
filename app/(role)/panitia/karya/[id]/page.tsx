@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import TinjauKarya from "@/components/dashboard/TinjauKarya";
-import { getBerkasDemo } from "@/lib/berkas-demo";
-import { karyaContoh, pesertaContoh } from "@/lib/data-contoh";
+import { getPanitiaKaryaById } from "@/lib/panitia-karya";
+import { getJuriWorkflowData } from "@/lib/juri-workflow";
 
 export default async function TinjauKaryaPage({
   params,
@@ -12,37 +12,30 @@ export default async function TinjauKaryaPage({
 }) {
   const { id } = await params;
   const { dari, kategori } = await searchParams;
-  const karya = karyaContoh.find((item) => item.id === id);
-  const peserta = karya
-    ? pesertaContoh.find((item) => item.id === karya.pesertaId)
-    : undefined;
-  if (!karya || !peserta) {
+  const data = await getPanitiaKaryaById(id);
+  if (!data) {
     notFound();
   }
 
+  const { item, history } = data;
+  const workflow =
+    item.karya.status === "diverifikasi"
+      ? (
+          await getJuriWorkflowData(item.peserta.kategori, "panitia")
+        ).workflow
+      : undefined;
   const readOnly =
     (dari === "kandidat" || dari === "pemenang") &&
-    kategori === peserta.kategori;
-  const berkas = getBerkasDemo(peserta, karya);
+    kategori === item.peserta.kategori;
 
   return (
     <TinjauKarya
-      item={{
-        karya,
-        peserta: {
-          id: peserta.id,
-          nama: peserta.nama,
-          asal: peserta.asal,
-          kategori: peserta.kategori,
-          tanggalDaftar: peserta.tanggalDaftar,
-        },
-        berkas: readOnly
-          ? berkas.filter((file) => file.jenis === "karya")
-          : berkas,
-      }}
+      item={item}
+      history={history}
       role="panitia"
       readOnly={readOnly}
       readOnlySource={dari === "pemenang" ? "pemenang" : "kandidat"}
+      workflow={workflow}
     />
   );
 }

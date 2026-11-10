@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { signInAction } from "@/lib/auth-actions";
 
 type Credentials = {
   email: string;
@@ -67,8 +68,12 @@ export default function AuthForm() {
 
     setIsLoading(true);
     try {
-      await new Promise<void>((resolve) => window.setTimeout(resolve, 600));
-      // TODO: sambungkan ke Supabase Auth.
+      const result = await signInAction(credentials.email, credentials.password);
+      if (result.error) {
+        setServerError(result.error);
+      }
+    } catch {
+      setServerError("Login gagal diproses. Coba lagi beberapa saat.");
     } finally {
       setIsLoading(false);
     }

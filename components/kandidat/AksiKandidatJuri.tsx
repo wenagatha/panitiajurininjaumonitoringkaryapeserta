@@ -2,18 +2,16 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { formatTanggal } from "@/lib/format-tanggal";
 import {
-  akanKehilanganPeringkat,
-  batalkanKandidat,
-  kosongkanPeringkat,
-  tetapkanPeringkat,
-  useStateJuri,
-  type PeringkatKategori,
-} from "@/lib/state-juri";
+  clearJuriRank,
+  setJuriRank,
+  toggleJuriCandidate,
+} from "@/lib/juri-mutations";
 import { useNotifikasi } from "@/components/ui/Notifikasi";
 import Notifikasi from "@/components/ui/Notifikasi";
-import type { JuriContoh } from "@/lib/juri-contoh";
+import type { JuriRank } from "@/lib/juri-workflow";
 
 type SlotPeringkat = {
   karyaId: string;
@@ -29,26 +27,27 @@ type Konfirmasi =
 type AksiKandidatJuriProps = {
   karyaId: string;
   namaPeserta: string;
-  juriAktif: JuriContoh;
   dipilihAktif: boolean;
-  peringkat?: PeringkatKategori;
+  peringkat?: JuriRank;
   jumlahPeringkat: number;
   slotByRank: Record<number, SlotPeringkat>;
+  lastSelected: boolean;
 };
 
 export default function AksiKandidatJuri({
   karyaId,
   namaPeserta,
-  juriAktif,
   dipilihAktif,
   peringkat,
   jumlahPeringkat,
   slotByRank,
+  lastSelected,
 }: AksiKandidatJuriProps) {
-  const { error: stateError } = useStateJuri();
+  const router = useRouter();
   const [selectedRank, setSelectedRank] = useState<number | "">("");
   const [pending, setPending] = useState<Konfirmasi | null>(null);
   const [error, setError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
   const { notifikasi, tampilkanNotifikasi, tutupNotifikasi } = useNotifikasi();
   const activeRank = selectedRank === "" ? peringkat?.peringkat ?? "" : selectedRank;
   const activeSlot = activeRank === "" ? undefined : slotByRank[activeRank];
@@ -63,14 +62,13 @@ export default function AksiKandidatJuri({
     setError(cause instanceof Error ? cause.message : fallback);
   }
 
-  function applyRank(replaceOccupant = false) {
+  async function applyRank(replaceOccupant = false) {
     if (activeRank === "") {
       return;
     }
+    setIsSaving(true);
     try {
-      tetapkanPeringkat(karyaId, juriAktif.id, activeRank, {
-        gantiPenghuni: replaceOccupant,
-      });
+      await setJuriRank(karyaId, activeRank, replaceOccupant);
       setError("");
       setPending(null);
       tampilkanNotifikasi(
@@ -78,8 +76,11 @@ export default function AksiKandidatJuri({
           ? `${namaPeserta} dipindahkan ke peringkat ${activeRank}.`
           : `${namaPeserta} ditetapkan pada peringkat ${activeRank}.`,
       );
+      router.refresh();
     } catch (cause) {
       setErrorFrom(cause, "Peringkat gagal disimpan.");
+    } finally {
+      setIsSaving(false);
     }
   }
 
@@ -107,33 +108,32 @@ export default function AksiKandidatJuri({
   }
 
   function requestCancelChoice() {
-    const peringkatHilang = akanKehilanganPeringkat(karyaId, juriAktif.id);
+    const peringkatHilang = lastSelected ? peringkat?.peringkat ?? null : null;
     setPending({ jenis: "batalkan", peringkatHilang });
   }
 
-  function confirmPending() {
+  async function confirmPending() {
     if (!pending) {
       return;
     }
+    setIsSaving(true);
     try {
       switch (pending.jenis) {
         case "ganti":
-          applyRank(true);
+          await applyRank(true);
           return;
         case "pindah":
-          applyRank();
+          await applyRank();
           return;
         case "kosongkan":
-          kosongkanPeringkat(karyaId, juriAktif.id);
+          await clearJuriRank(karyaId);
           tampilkanNotifikasi(`Peringkat ${pending.peringkat} dikosongkan.`);
           break;
         case "batalkan":
-          batalkanKandidat(
+          await toggleJuriCandidate(
             karyaId,
-            juriAktif.id,
-            pending.peringkatHilang === null
-              ? undefined
-              : { hapusPeringkat: true },
+            false,
+            pending.peringkatHilang !== null,
           );
           tampilkanNotifikasi(
             pending.peringkatHilang === null
@@ -144,8 +144,11 @@ export default function AksiKandidatJuri({
       }
       setPending(null);
       setError("");
+      router.refresh();
     } catch (cause) {
       setErrorFrom(cause, "Aksi gagal disimpan.");
+    } finally {
+      setIsSaving(false);
     }
   }
 
@@ -181,6 +184,7 @@ export default function AksiKandidatJuri({
           <button
             type="button"
             onClick={requestCancelChoice}
+            disabled={isSaving}
             className="rounded-lg border border-[#d9c6bd] bg-white px-3 py-2.5 text-[10px] font-semibold text-[#8d4b37] hover:bg-[#fff8f4]"
           >
             Batalkan pilihan saya
@@ -211,11 +215,10 @@ export default function AksiKandidatJuri({
         </label>
         <button
           type="button"
-          onClick={requestSetRank}
-          disabled={
+          onClick={() => void requestSetRank()}
+          disabled={isSaving ||
             activeRank === "" ||
-            activeRank === peringkat?.peringkat
-          }
+            activeRank === peringkat?.peringkat}
           className="rounded-lg border border-[#b8cec1] bg-[#f2f8f4] px-3 py-2.5 text-[10px] font-semibold text-[#28634d] hover:bg-[#eaf4ef] disabled:cursor-not-allowed disabled:opacity-50"
         >
           Tetapkan
@@ -235,7 +238,7 @@ export default function AksiKandidatJuri({
 
       {peringkat && (
         <p className="mt-2 text-[10px] text-[#718079]">
-          Ditetapkan oleh {peringkat.ditetapkanOleh} pada{" "}
+          Ditetapkan oleh {peringkat.ditetapkanOlehNama} pada{" "}
           {formatTanggal(peringkat.ditetapkanPada.slice(0, 10))}
         </p>
       )}
@@ -246,7 +249,8 @@ export default function AksiKandidatJuri({
           <div className="mt-2 flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={confirmPending}
+              onClick={() => void confirmPending()}
+              disabled={isSaving}
               className="rounded-md bg-[#9e5337] px-3 py-2 text-xs font-semibold text-white hover:bg-[#84432d]"
             >
               {pending.jenis === "batalkan" &&
@@ -271,9 +275,9 @@ export default function AksiKandidatJuri({
         </div>
       )}
 
-      {(error || stateError) && (
+      {error && (
         <p role="alert" className="mt-2 text-xs font-medium text-[#a33340]">
-          {error || stateError}
+          {error}
         </p>
       )}
     </div>

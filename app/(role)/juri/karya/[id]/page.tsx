@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import TinjauKarya from "@/components/dashboard/TinjauKarya";
 import { getJuriAktif } from "@/lib/juri-aktif";
-import { getKaryaJuriByKategori } from "@/lib/karya-juri";
+import { getJuriWorkDetail } from "@/lib/juri-workflow";
 
 export default async function JuriTinjauKaryaPage({
   params,
@@ -14,16 +14,15 @@ export default async function JuriTinjauKaryaPage({
   const { dari } = await searchParams;
   const readOnlyFromWinners = dari === "pemenang";
   const juriAktif = await getJuriAktif();
-  const item = getKaryaJuriByKategori(juriAktif.kategori).find(
-    (entry) => entry.karya.id === id,
-  );
-  if (!item) {
+  const data = await getJuriWorkDetail(id, juriAktif.kategori);
+  if (!data) {
     notFound();
   }
 
   return (
     <TinjauKarya
-      item={item}
+      item={data.item}
+      workflow={data.workflow}
       role="juri"
       readOnly={readOnlyFromWinners}
       readOnlySource={readOnlyFromWinners ? "pemenang" : undefined}

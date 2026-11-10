@@ -2,14 +2,15 @@ import KandidatKategori, {
   type KandidatKategoriItem,
 } from "@/components/kandidat/KandidatKategori";
 import { getJuriAktif } from "@/lib/juri-aktif";
-import { getKaryaJuriByKategori } from "@/lib/karya-juri";
+import { getJuriWorkflowData } from "@/lib/juri-workflow";
 
 export default async function JuriKandidatPage() {
   const juriAktif = await getJuriAktif();
-  // TODO: kompromi prototipe; penyaringan status dan akses nantinya dijaga oleh RLS Supabase.
-  const items: KandidatKategoriItem[] = getKaryaJuriByKategori(
+  const { items: works, workflow } = await getJuriWorkflowData(
     juriAktif.kategori,
-  ).map(({ karya, peserta }) => ({
+    "juri",
+  );
+  const items: KandidatKategoriItem[] = works.map(({ karya, peserta }) => ({
     karya: { id: karya.id, status: karya.status },
     peserta: {
       id: peserta.id,
@@ -23,6 +24,7 @@ export default async function JuriKandidatPage() {
       kategori={juriAktif.kategori}
       items={items}
       role="juri"
+      workflow={workflow}
     />
   );
 }

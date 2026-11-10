@@ -365,6 +365,7 @@ export function useStateJuri(): StateJuriSnapshot {
 export function statusTinjauanJuri(
   karyaId: string,
   juriId: string,
+  now: number,
 ): StatusTinjauanJuri {
   const review = getSnapshot().state.tinjauan[kunci(karyaId, juriId)];
   if (!review) {
@@ -372,7 +373,7 @@ export function statusTinjauanJuri(
   }
   if (
     review.status === "sedang" &&
-    Date.now() - new Date(review.terakhirAktif).getTime() >
+    now - new Date(review.terakhirAktif).getTime() >
       BATAS_AKTIF_MENIT * 60_000
   ) {
     return "belum";
@@ -383,9 +384,10 @@ export function statusTinjauanJuri(
 export function waktuTinjauanJuri(
   karyaId: string,
   juriId: string,
+  now: number,
 ): TinjauanJuri | undefined {
   const review = getSnapshot().state.tinjauan[kunci(karyaId, juriId)];
-  return review && statusTinjauanJuri(karyaId, juriId) !== "belum"
+  return review && statusTinjauanJuri(karyaId, juriId, now) !== "belum"
     ? review
     : undefined;
 }

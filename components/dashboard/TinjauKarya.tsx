@@ -1,42 +1,42 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { formatTanggal } from "@/lib/format-tanggal";
 import { getStatusLabel, getStatusStyle, STATUS_KARYA } from "@/lib/status";
-import { useStatusKarya } from "@/lib/review-status";
+import {
+  updatePanitiaKaryaStatus,
+  type PanitiaRiwayatStatus,
+} from "@/lib/panitia-actions";
 import {
   ATURAN_LOMBA,
   HEARTBEAT_DETIK,
 } from "@/lib/aturan-lomba";
-import { JURI_CONTOH } from "@/lib/juri-contoh";
 import { useJuriAktif } from "@/components/juri/JuriAktifProvider";
 import { useDetakWaktu } from "@/lib/use-detak-waktu";
-import {
-  akanKehilanganPeringkat,
-  akhiriTinjau,
-  batalkanKandidat,
-  batalkanSudahDitinjau,
-  daftarJuriKandidat,
-  jadikanKandidat,
-  kirimDetak,
-  mulaiTinjau,
-  jumlahKandidatKategori,
-  statusTinjauanJuri,
-  tandaiSudahDitinjau,
-  useStateJuri,
-  waktuTinjauanJuri,
-} from "@/lib/state-juri";
+import { saveJuriReview, toggleJuriCandidate } from "@/lib/juri-mutations";
+import type { JuriWorkflowSnapshot } from "@/lib/juri-workflow";
 import Notifikasi, { useNotifikasi } from "@/components/ui/Notifikasi";
 import type { StatusKarya } from "@/types/karya";
 import type { KaryaDaftarItem } from "./KaryaCategoryList";
 
 type TinjauKaryaProps = {
   item: KaryaDaftarItem;
+  history?: PanitiaRiwayatStatus[];
   role?: "panitia" | "juri";
   readOnly?: boolean;
   readOnlySource?: "kandidat" | "pemenang";
+  workflow?: JuriWorkflowSnapshot;
 };
+
+function formatWaktu(waktu: string): string {
+  return new Intl.DateTimeFormat("id-ID", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Jakarta",
+  }).format(new Date(waktu));
+}
 
 export default function TinjauKarya({
   ...props
@@ -54,20 +54,34 @@ function TinjauKaryaJuri(props: TinjauKaryaProps) {
 
 function TinjauKaryaContent({
   item,
+  history = [],
   role = "panitia",
   readOnly = false,
   readOnlySource = "kandidat",
   juriAktif,
+  workflow,
 }: TinjauKaryaProps & {
   juriAktif?: ReturnType<typeof useJuriAktif>;
 }) {
-  useDetakWaktu(30_000);
-  const karya = useMemo(() => [item.karya], [item.karya]);
-  const { statuses, setStatus, ready, error } = useStatusKarya(karya);
-  const status = statuses[item.karya.id] ?? item.karya.status;
+  const router = useRouter();
+  const now = useDetakWaktu(30_000);
+  const [panitiaStatus, setPanitiaStatus] = useState<StatusKarya>(
+    item.karya.status,
+  );
+  const [panitiaHistory, setPanitiaHistory] = useState(history);
+  const status =
+    role === "panitia"
+      ? panitiaStatus
+      : item.karya.status;
   const [draftStatus, setDraftStatus] = useState<StatusKarya>(item.karya.status);
   const [saved, setSaved] = useState(false);
-  const { state, error: stateJuriError } = useStateJuri();
+  const workflowData = workflow ?? {
+    judges: [],
+    selections: [],
+    ranks: [],
+    history: [],
+    reviews: [],
+  };
   const [trackingError, setTrackingError] = useState("");
   const [actionError, setActionError] = useState("");
   const [confirmCancelCandidate, setConfirmCancelCandidate] = useState(false);
@@ -91,43 +105,68 @@ function TinjauKaryaContent({
       ? item.berkas.filter((file) => file.jenis === "karya")
       : item.berkas;
   const statusStyle = getStatusStyle(status);
-  const juriKategori = JURI_CONTOH.filter(
-    (juri) => juri.kategori === item.peserta.kategori,
-  );
+  const juriKategori = workflowData.judges;
   const juriAktifId = juriAktif?.id;
+  const getReviewStatus = (judgeId: string) => {
+    const review = workflowData.reviews.find(
+      (entry) =>
+        entry.karyaId === item.karya.id && entry.juriId === judgeId,
+    );
+    if (
+      !review ||
+      (review.status === "sedang" &&
+        now - Date.parse(review.terakhirAktif) > 5 * 60_000)
+    ) {
+      return "belum";
+    }
+    return review.status;
+  };
+  const getReviewTime = (judgeId: string) =>
+    workflowData.reviews.find(
+      (entry) =>
+        entry.karyaId === item.karya.id && entry.juriId === judgeId,
+    );
   const statusAktif =
-    role === "juri" && juriAktif
-      ? statusTinjauanJuri(item.karya.id, juriAktif.id)
-      : "belum";
-  const juriPemilih = daftarJuriKandidat(item.karya.id, state);
+    role === "juri" && juriAktif ? getReviewStatus(juriAktif.id) : "belum";
+  const juriPemilih = workflowData.selections
+    .filter((selection) => selection.karyaId === item.karya.id)
+    .map((selection) => ({
+      id: selection.juriId,
+      nama:
+        workflowData.judges.find((judge) => judge.id === selection.juriId)
+          ?.nama ?? selection.juriNama,
+    }));
   const sudahDipilihAktif = juriPemilih.some(
     (juri) => juri.id === juriAktif?.id,
   );
   const sudahKandidat = juriPemilih.length > 0;
-  const peringkatSaatIni =
-    sudahKandidat ? state.peringkat[item.karya.id] : undefined;
+  const peringkatSaatIni = workflowData.ranks.find(
+    (rank) => rank.karyaId === item.karya.id,
+  );
   const dipilihJuriLain = juriPemilih.filter(
     (juri) => juri.id !== juriAktif?.id,
   );
-  const jumlahKandidat = jumlahKandidatKategori(item.peserta.kategori, state);
+  const jumlahKandidat = new Set(
+    workflowData.selections.map((selection) => selection.karyaId),
+  ).size;
   const kuotaPenuh =
     jumlahKandidat >= ATURAN_LOMBA[item.peserta.kategori].batasKandidat;
   const peringkatAkanHilang =
-    role === "juri" && juriAktif
-      ? akanKehilanganPeringkat(item.karya.id, juriAktif.id)
+    juriPemilih.length === 1 && peringkatSaatIni
+      ? peringkatSaatIni.peringkat
       : null;
   useEffect(() => {
     if (
       role !== "juri" ||
       readOnly ||
       !juriAktifId ||
-      !ready ||
       status !== "diverifikasi"
     ) {
       return;
     }
 
     let intervalId: number | undefined;
+    let active = true;
     const stopHeartbeat = () => {
       if (intervalId !== undefined) {
         window.clearInterval(intervalId);
@@ -138,30 +177,43 @@ function TinjauKaryaContent({
       if (document.visibilityState !== "visible") {
         return;
       }
-      try {
-        mulaiTinjau(item.karya.id, juriAktifId);
-        if (intervalId === undefined) {
-          intervalId = window.setInterval(() => {
-            if (document.visibilityState === "visible") {
-              try {
-                kirimDetak(item.karya.id, juriAktifId);
-              } catch (cause) {
-                setTrackingError(
-                  cause instanceof Error
-                    ? cause.message
-                    : "Gagal mengirim detak tinjauan.",
-                );
-              }
-            }
-          }, HEARTBEAT_DETIK * 1000);
-        }
-        setTrackingError("");
-      } catch (cause) {
-        setTrackingError(
-          cause instanceof Error
-            ? cause.message
-            : "Gagal memulai tinjauan juri.",
-        );
+      void saveJuriReview(item.karya.id, "start")
+        .then(() => {
+          if (active) {
+            setTrackingError("");
+            router.refresh();
+          }
+        })
+        .catch((cause) => {
+          if (active) {
+            setTrackingError(
+              cause instanceof Error
+                ? cause.message
+                : "Gagal memulai tinjauan juri.",
+            );
+          }
+        });
+      if (intervalId === undefined) {
+        intervalId = window.setInterval(() => {
+          if (document.visibilityState === "visible") {
+            void saveJuriReview(item.karya.id, "heartbeat")
+              .then(() => {
+                if (active) {
+                  setTrackingError("");
+                  router.refresh();
+                }
+              })
+              .catch((cause) => {
+                if (active) {
+                  setTrackingError(
+                    cause instanceof Error
+                      ? cause.message
+                      : "Gagal mengirim detak tinjauan.",
+                  );
+                }
+              });
+          }
+        }, HEARTBEAT_DETIK * 1000);
       }
     };
     const handleVisibilityChange = () => {
@@ -175,63 +227,89 @@ function TinjauKaryaContent({
     startTracking();
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
+      active = false;
       stopHeartbeat();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      try {
-        if (statusTinjauanJuri(item.karya.id, juriAktifId) === "sedang") {
-          akhiriTinjau(item.karya.id, juriAktifId);
-        }
-      } catch (cause) {
+      void saveJuriReview(item.karya.id, "finish").catch((cause) => {
         console.error("Gagal mengakhiri tinjauan juri.", cause);
-      }
+      });
     };
-  }, [item.karya.id, juriAktifId, readOnly, ready, role, status]);
+  }, [item.karya.id, juriAktifId, readOnly, role, router, status]);
 
   useEffect(() => {
-    if (!ready || readOnly) {
+    if (readOnly) {
       return;
     }
-    const timeoutId = window.setTimeout(() => {
-      if (role === "panitia" && status === "menunggu") {
-        const updated = setStatus(item.karya.id, "diproses");
-        setDraftStatus(updated ? "diproses" : status);
-      } else {
-        setDraftStatus(status);
+    if (role === "panitia") {
+      if (status === "menunggu") {
+        let active = true;
+        void updatePanitiaKaryaStatus(item.karya.id, "diproses")
+          .then(({ history: newHistory }) => {
+            if (!active) {
+              return;
+            }
+            setPanitiaStatus("diproses");
+            setDraftStatus("diproses");
+            if (newHistory) {
+              setPanitiaHistory((previous) => [newHistory, ...previous]);
+            }
+          })
+          .catch((cause: unknown) => {
+            if (active) {
+              setActionError(
+                cause instanceof Error
+                  ? cause.message
+                  : "Gagal mengubah status karya menjadi Diproses.",
+              );
+            }
+          });
+        return () => {
+          active = false;
+        };
       }
-    }, 0);
+    }
+
+    const timeoutId = window.setTimeout(() => setDraftStatus(status), 0);
     return () => window.clearTimeout(timeoutId);
-  }, [item.karya.id, readOnly, ready, role, setStatus, status]);
+  }, [item.karya.id, readOnly, role, status]);
 
-  if (role === "juri" && !ready) {
-    return (
-      <main className="mx-auto max-w-[820px]">
-        <p role="status" className="text-sm text-[#84918b]">
-          Memuat karya...
-        </p>
-      </main>
-    );
-  }
-
-  function saveDecision() {
-    if (setStatus(item.karya.id, draftStatus)) {
-      setSaved(true);
-    } else {
-      setSaved(false);
+  async function saveDecision() {
+    setActionError("");
+    if (role === "panitia") {
+      try {
+        const { history: newHistory } = await updatePanitiaKaryaStatus(
+          item.karya.id,
+          draftStatus,
+        );
+        setPanitiaStatus(draftStatus);
+        if (newHistory) {
+          setPanitiaHistory((previous) => [newHistory, ...previous]);
+        }
+        setSaved(true);
+      } catch (cause) {
+        setSaved(false);
+        setActionError(
+          cause instanceof Error
+            ? cause.message
+            : "Status karya gagal disimpan.",
+        );
+      }
     }
   }
 
-  function toggleSudahDitinjau() {
+  async function toggleSudahDitinjau() {
     if (!juriAktif) {
       return;
     }
     try {
       if (statusAktif === "sudah") {
-        batalkanSudahDitinjau(item.karya.id, juriAktif.id);
+        await saveJuriReview(item.karya.id, "unmark_done");
       } else {
-        tandaiSudahDitinjau(item.karya.id, juriAktif.id);
+        await saveJuriReview(item.karya.id, "mark_done");
         tampilkanNotifikasi("Karya ditandai sudah ditinjau.");
       }
       setActionError("");
+      router.refresh();
     } catch (cause) {
       setActionError(
         cause instanceof Error
@@ -241,7 +319,7 @@ function TinjauKaryaContent({
     }
   }
 
-  function toggleKandidat() {
+  async function toggleKandidat() {
     if (!juriAktif) {
       return;
     }
@@ -251,22 +329,21 @@ function TinjauKaryaContent({
           setConfirmCancelCandidate(true);
           return;
         }
-        batalkanKandidat(
+        await toggleJuriCandidate(
           item.karya.id,
-          juriAktif.id,
-          peringkatAkanHilang === null
-            ? undefined
-            : { hapusPeringkat: true },
+          false,
+          peringkatAkanHilang !== null,
         );
         setConfirmCancelCandidate(false);
         tampilkanNotifikasi(`${item.peserta.nama} dihapus dari kandidat.`);
       } else {
-        jadikanKandidat(item.karya.id, juriAktif.id);
+        await toggleJuriCandidate(item.karya.id, true);
         tampilkanNotifikasi(
           `${item.peserta.nama} berhasil dijadikan kandidat.`,
         );
       }
       setActionError("");
+      router.refresh();
     } catch (cause) {
       setActionError(
         cause instanceof Error
@@ -428,7 +505,7 @@ function TinjauKaryaContent({
                 </select>
                 <button
                   type="button"
-                  onClick={saveDecision}
+                  onClick={() => void saveDecision()}
                   className="rounded-lg bg-[#245c4f] px-4 py-3 text-xs font-semibold text-white transition hover:bg-[#19483e]"
                 >
                   Simpan keputusan
@@ -436,15 +513,53 @@ function TinjauKaryaContent({
               </div>
               {saved && (
                 <p role="status" className="mt-3 text-xs font-medium text-[#1f6746]">
-                  Status berhasil disimpan di browser ini.
+                  Status dan riwayat berhasil disimpan di Supabase.
                 </p>
               )}
-              {error && (
+              {actionError && (
                 <p role="alert" className="mt-3 text-xs font-medium text-[#a33340]">
-                  {error}
+                  {actionError}
                 </p>
               )}
             </div>
+          )}
+
+          {role === "panitia" && (
+            <section className="mt-5 border-t border-[#e8eeea] pt-5">
+              <h2 className="text-sm font-bold text-[#29463d]">
+                Riwayat perubahan status
+              </h2>
+              {panitiaHistory.length === 0 ? (
+                <p className="mt-2 text-xs text-[#84918b]">
+                  Belum ada perubahan status yang tercatat.
+                </p>
+              ) : (
+                <ol className="mt-3 space-y-2">
+                  {panitiaHistory.map((entry) => (
+                    <li
+                      key={entry.id}
+                      className="rounded-md bg-[#f7faf8] px-3 py-2 text-xs text-[#52766a]"
+                    >
+                      <span className="font-semibold">{entry.panitia.nama}</span>{" "}
+                      mengubah status dari{" "}
+                      <span className="font-semibold">
+                        {getStatusLabel(entry.status_lama)}
+                      </span>{" "}
+                      menjadi{" "}
+                      <span className="font-semibold">
+                        {getStatusLabel(entry.status_baru)}
+                      </span>
+                      <time
+                        className="mt-1 block text-[11px] text-[#84918b]"
+                        dateTime={entry.waktu}
+                      >
+                        {formatWaktu(entry.waktu)}
+                      </time>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </section>
           )}
 
           {role === "panitia" && status === "diverifikasi" && (
@@ -454,10 +569,7 @@ function TinjauKaryaContent({
               </h2>
               <ul className="mt-3 grid gap-2 sm:grid-cols-2">
                 {juriKategori.map((juri) => {
-                  const reviewStatus = statusTinjauanJuri(
-                    item.karya.id,
-                    juri.id,
-                  );
+                  const reviewStatus = getReviewStatus(juri.id);
                   return (
                     <li
                       key={juri.id}
@@ -493,7 +605,7 @@ function TinjauKaryaContent({
                     Peringkat {peringkatSaatIni.peringkat}
                   </span>
                   <p className="mt-2 text-xs text-[#718079]">
-                    Ditetapkan oleh {peringkatSaatIni.ditetapkanOleh} pada{" "}
+                    Ditetapkan oleh {peringkatSaatIni.ditetapkanOlehNama} pada{" "}
                     {formatTanggal(peringkatSaatIni.ditetapkanPada.slice(0, 10))}
                   </p>
                 </div>
@@ -518,11 +630,8 @@ function TinjauKaryaContent({
               </p>
               <ul className="mt-3 space-y-2">
                 {juriKategori.map((juri) => {
-                  const reviewStatus = statusTinjauanJuri(
-                    item.karya.id,
-                    juri.id,
-                  );
-                  const waktu = waktuTinjauanJuri(item.karya.id, juri.id);
+                  const reviewStatus = getReviewStatus(juri.id);
+                  const waktu = getReviewTime(juri.id);
                   const waktuStatus =
                     reviewStatus === "sudah"
                       ? waktu?.selesaiPada
@@ -571,7 +680,7 @@ function TinjauKaryaContent({
               <button
                 type="button"
                 aria-pressed={statusAktif === "sudah"}
-                onClick={toggleSudahDitinjau}
+                onClick={() => void toggleSudahDitinjau()}
                 className={`mt-4 inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-xs font-semibold transition ${
                   statusAktif === "sudah"
                     ? "border-[#9cc8b4] bg-[#eafbf4] text-[#24724f]"
@@ -600,7 +709,7 @@ function TinjauKaryaContent({
                     </span>
                     <button
                       type="button"
-                      onClick={toggleKandidat}
+                      onClick={() => void toggleKandidat()}
                       className="rounded-md bg-[#9e5337] px-3 py-2 text-xs font-semibold text-white hover:bg-[#84432d]"
                     >
                       {peringkatAkanHilang === null
@@ -618,7 +727,7 @@ function TinjauKaryaContent({
                 ) : (
                   <button
                     type="button"
-                    onClick={toggleKandidat}
+                    onClick={() => void toggleKandidat()}
                     disabled={
                       !sudahDipilihAktif &&
                       (statusAktif !== "sudah" ||
@@ -645,9 +754,9 @@ function TinjauKaryaContent({
                     Kuota kandidat penuh
                   </p>
                 )}
-              {(error || stateJuriError || trackingError || actionError) && (
+              {(trackingError || actionError) && (
                 <p role="alert" className="mt-3 text-xs font-medium text-[#a33340]">
-                  {error || stateJuriError || trackingError || actionError}
+                  {trackingError || actionError}
                 </p>
               )}
             </section>

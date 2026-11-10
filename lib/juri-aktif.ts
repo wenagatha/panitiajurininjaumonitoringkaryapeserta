@@ -1,8 +1,14 @@
-import { cookies } from "next/headers";
-import { JURI_CONTOH } from "@/lib/juri-contoh";
+import { requireStaffRole } from "@/lib/auth";
 
 export async function getJuriAktif() {
-  const cookieStore = await cookies();
-  const id = cookieStore.get("juri_aktif")?.value;
-  return JURI_CONTOH.find((juri) => juri.id === id) ?? JURI_CONTOH[0];
+  const profile = await requireStaffRole("juri");
+  if (!profile.kategori) {
+    throw new Error("Profil juri belum memiliki kategori lomba.");
+  }
+
+  return {
+    id: profile.id,
+    nama: profile.nama,
+    kategori: profile.kategori,
+  };
 }

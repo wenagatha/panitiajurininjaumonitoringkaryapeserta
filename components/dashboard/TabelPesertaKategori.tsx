@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getStatusLabel, getStatusStyle, STATUS_KARYA } from "@/lib/status";
 import { normalisasiWhatsApp } from "@/lib/normalisasi-whatsapp";
-import { useStatusKarya } from "@/lib/review-status";
-import type { PesertaDashboard, StatusKarya } from "@/types/karya";
+import type { StatusKarya } from "@/types/karya";
+import type { PesertaKategoriRow } from "@/types/peserta-dashboard";
 
 const PAGE_SIZE = 10;
 
@@ -17,18 +17,15 @@ function formatTanggal(tanggal: string): string {
   return `${date.getDate()} ${bulan[date.getMonth()]} ${date.getFullYear()}`;
 }
 
-function labelLomba(kategori: PesertaDashboard["kategori"]): string {
+function labelLomba(kategori: PesertaKategoriRow["kategori"]): string {
   return kategori === "cerita" ? "Cerita HAM" : "Komik Bergambar";
 }
 
-// TODO: email, WhatsApp, kartu, dan pernyataan hanya untuk role panitia; nantinya dijaga juga oleh RLS Supabase.
 export default function TabelPesertaKategori({
   rows,
 }: {
-  rows: PesertaDashboard[];
+  rows: PesertaKategoriRow[];
 }) {
-  const karya = useMemo(() => rows.map((row) => row.karya), [rows]);
-  const { statuses, error } = useStatusKarya(karya);
   const [query, setQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<"semua" | StatusKarya>(
     "semua",
@@ -42,7 +39,7 @@ export default function TabelPesertaKategori({
     const searchTerm = query.trim().toLocaleLowerCase("id-ID");
     return rows
       .filter((row) => {
-        const status = statuses[row.karya.id] ?? row.karya.status;
+        const status = row.karya.status;
         const matchesSearch =
           !searchTerm ||
           row.nama.toLocaleLowerCase("id-ID").includes(searchTerm) ||
@@ -59,7 +56,7 @@ export default function TabelPesertaKategori({
           new Date(second.tanggalDaftar).getTime() -
           new Date(first.tanggalDaftar).getTime(),
       );
-  }, [filterStatus, query, rows, statuses]);
+  }, [filterStatus, query, rows]);
 
   const pageCount = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
@@ -78,10 +75,10 @@ export default function TabelPesertaKategori({
       ditolak: 0,
     };
     for (const row of rows) {
-      counts[statuses[row.karya.id] ?? row.karya.status] += 1;
+      counts[row.karya.status] += 1;
     }
     return counts;
-  }, [rows, statuses]);
+  }, [rows]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -121,11 +118,6 @@ export default function TabelPesertaKategori({
 
   return (
     <>
-      {error && (
-        <p role="alert" className="mb-4 rounded-lg bg-[#fff0f0] px-3 py-2 text-xs text-[#a33340]">
-          {error}
-        </p>
-      )}
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
         {statCards.map((card) => (
           <div
@@ -203,7 +195,7 @@ export default function TabelPesertaKategori({
             </thead>
             <tbody>
               {pageRows.map((row) => {
-                const status = statuses[row.karya.id] ?? row.karya.status;
+                const status = row.karya.status;
                 const statusStyle = getStatusStyle(status);
                 const whatsapp = normalisasiWhatsApp(row.whatsapp);
                 return (
@@ -354,8 +346,7 @@ export default function TabelPesertaKategori({
                 <dt className="text-xs text-[#84918b]">Status</dt>
                 <dd className="mt-1">
                   {(() => {
-                    const status =
-                      statuses[selectedRow.karya.id] ?? selectedRow.karya.status;
+                    const status = selectedRow.karya.status;
                     const style = getStatusStyle(status);
                     return style ? (
                       <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${style.badgeClass}`}>
@@ -412,14 +403,20 @@ export default function TabelPesertaKategori({
                   },
                 ].map((file) => (
                   <li key={file.label}>
-                    <a
-                      href={file.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block rounded-lg border border-[#d6e0da] px-3 py-3 text-sm font-medium text-[#345248] hover:bg-[#f5faf7]"
-                    >
-                      {file.label}
-                    </a>
+                    {file.href ? (
+                      <a
+                        href={file.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block rounded-lg border border-[#d6e0da] px-3 py-3 text-sm font-medium text-[#345248] hover:bg-[#f5faf7]"
+                      >
+                        {file.label}
+                      </a>
+                    ) : (
+                      <p className="rounded-lg border border-dashed border-[#d6e0da] px-3 py-3 text-sm text-[#84918b]">
+                        {file.label} belum tersedia
+                      </p>
+                    )}
                   </li>
                 ))}
               </ul>

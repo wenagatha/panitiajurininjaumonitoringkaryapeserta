@@ -1,21 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getStatusLabel, getStatusStyle, STATUS_KARYA } from "@/lib/status";
 import type { BerkasKarya } from "@/lib/berkas-demo";
-import { useStatusKarya } from "@/lib/review-status";
-import { ATURAN_LOMBA } from "@/lib/aturan-lomba";
-import { JURI_CONTOH } from "@/lib/juri-contoh";
+import {
+  updatePanitiaKaryaStatus,
+  type PanitiaRiwayatStatus,
+} from "@/lib/panitia-actions";
+import { ATURAN_LOMBA, HEARTBEAT_DETIK } from "@/lib/aturan-lomba";
 import { useJuriAktif } from "@/components/juri/JuriAktifProvider";
 import { useDetakWaktu } from "@/lib/use-detak-waktu";
-import {
-  daftarJuriKandidat,
-  getKandidatKategori,
-  getPeringkatKategori,
-  statusTinjauanJuri,
-  useStateJuri,
-} from "@/lib/state-juri";
+import type { JuriWorkflowSnapshot } from "@/lib/juri-workflow";
 import type {
   Karya,
   KategoriLomba,
@@ -39,6 +35,8 @@ type KaryaCategoryListProps = {
   kategori: KategoriLomba;
   items: KaryaDaftarItem[];
   role?: "panitia" | "juri";
+  historyByKarya?: Record<string, PanitiaRiwayatStatus[]>;
+  workflow?: JuriWorkflowSnapshot;
 };
 
 export function filterKaryaUntukRole(
@@ -50,7 +48,6 @@ export function filterKaryaUntukRole(
   if (role === "panitia") {
     return items;
   }
-  // TODO: nantinya penjagaan status terverifikasi juga dilakukan oleh RLS Supabase.
   return items.filter(
     ({ karya, peserta }) =>
       (statuses[karya.id] ?? karya.status) === "diverifikasi" &&
@@ -66,19 +63,36 @@ function formatTanggal(tanggal: string): string {
   });
 }
 
+function formatWaktu(waktu: string): string {
+  return new Intl.DateTimeFormat("id-ID", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Jakarta",
+  }).format(new Date(waktu));
+}
+
 export default function KaryaCategoryList({
   kategori,
   items,
   role = "panitia",
+  historyByKarya,
+  workflow,
 }: KaryaCategoryListProps) {
   if (role === "juri") {
-    return <KaryaCategoryListJuri kategori={kategori} items={items} />;
+    return (
+      <KaryaCategoryListJuri
+        kategori={kategori}
+        items={items}
+        workflow={workflow}
+      />
+    );
   }
   return (
     <KaryaCategoryListContent
       kategori={kategori}
       items={items}
       role="panitia"
+      historyByKarya={historyByKarya}
     />
   );
 }
@@ -86,6 +100,7 @@ export default function KaryaCategoryList({
 function KaryaCategoryListJuri({
   kategori,
   items,
+  workflow,
 }: Omit<KaryaCategoryListProps, "role">) {
   const juriAktif = useJuriAktif();
   return (
@@ -94,6 +109,7 @@ function KaryaCategoryListJuri({
       items={items}
       role="juri"
       juriAktif={juriAktif}
+      workflow={workflow}
     />
   );
 }
@@ -103,15 +119,29 @@ function KaryaCategoryListContent({
   items,
   role,
   juriAktif,
+  historyByKarya,
+  workflow,
 }: Omit<KaryaCategoryListProps, "role"> & {
   role: "panitia" | "juri";
   juriAktif?: ReturnType<typeof useJuriAktif>;
+  workflow?: JuriWorkflowSnapshot;
 }) {
   const router = useRouter();
-  useDetakWaktu(30_000);
-  const karya = useMemo(() => items.map((item) => item.karya), [items]);
-  const { statuses, setStatus, ready, error } = useStatusKarya(karya);
-  const { state: stateJuri, error: stateJuriError } = useStateJuri();
+  const now = useDetakWaktu(30_000);
+  const workflowData = workflow ?? {
+    judges: [],
+    selections: [],
+    ranks: [],
+    history: [],
+    reviews: [],
+  };
+  const [panitiaStatuses, setPanitiaStatuses] = useState<
+    Record<string, StatusKarya>
+  >(() =>
+    Object.fromEntries(items.map(({ karya: work }) => [work.id, work.status])),
+  );
+  const [panitiaError, setPanitiaError] = useState("");
+  const [savingKaryaId, setSavingKaryaId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<"semua" | StatusKarya>(
     "semua",
@@ -120,6 +150,24 @@ function KaryaCategoryListContent({
     "semua" | "belum" | "sudah"
   >("semua");
 
+  useEffect(() => {
+    if (role !== "juri") {
+      return;
+    }
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        router.refresh();
+      }
+    }, HEARTBEAT_DETIK * 1000);
+    return () => window.clearInterval(intervalId);
+  }, [role, router]);
+
+  const statuses =
+    role === "panitia"
+      ? panitiaStatuses
+      : Object.fromEntries(
+          items.map(({ karya: work }) => [work.id, work.status]),
+        );
   const roleItems = useMemo(
     () => filterKaryaUntukRole(items, role, statuses, juriAktif?.kategori),
     [items, juriAktif?.kategori, role, statuses],
@@ -131,10 +179,7 @@ function KaryaCategoryListContent({
       !searchTerm ||
       peserta.nama.toLocaleLowerCase("id-ID").includes(searchTerm) ||
       peserta.asal.toLocaleLowerCase("id-ID").includes(searchTerm);
-    const reviewStatus =
-      role === "juri" && juriAktif
-        ? statusTinjauanJuri(work.id, juriAktif.id)
-        : "belum";
+    const reviewStatus = getReviewStatus(work.id, juriAktif?.id ?? "");
     const matchesJuriReview =
       role !== "juri" ||
       filterTinjauan === "semua" ||
@@ -164,13 +209,50 @@ function KaryaCategoryListContent({
     return result;
   }, [roleItems, statuses]);
 
-  function openReview(item: KaryaDaftarItem) {
+  function getReviewStatus(workId: string, judgeId: string) {
+    const review = workflowData.reviews.find(
+      (entry) => entry.karyaId === workId && entry.juriId === judgeId,
+    );
+    if (!review) {
+      return "belum";
+    }
+    if (
+      review.status === "sedang" &&
+      now - Date.parse(review.terakhirAktif) > 5 * 60_000
+    ) {
+      return "belum";
+    }
+    return review.status;
+  }
+
+  async function saveStatus(id: string, status: StatusKarya) {
+    setPanitiaError("");
+    setSavingKaryaId(id);
+    try {
+      await updatePanitiaKaryaStatus(id, status);
+      setPanitiaStatuses((previous) => ({ ...previous, [id]: status }));
+      router.refresh();
+      return true;
+    } catch (cause) {
+      setPanitiaError(
+        cause instanceof Error ? cause.message : "Status karya gagal disimpan.",
+      );
+      return false;
+    } finally {
+      setSavingKaryaId(null);
+    }
+  }
+
+  async function openReview(item: KaryaDaftarItem) {
     if (role === "juri") {
       router.push(`/juri/karya/${item.karya.id}`);
       return;
     }
     const currentStatus = statuses[item.karya.id] ?? item.karya.status;
-    if (currentStatus === "menunggu" && !setStatus(item.karya.id, "diproses")) {
+    if (
+      currentStatus === "menunggu" &&
+      !(await saveStatus(item.karya.id, "diproses"))
+    ) {
       return;
     }
     router.push(`/panitia/karya/${item.karya.id}?kategori=${kategori}`);
@@ -190,7 +272,7 @@ function KaryaCategoryListContent({
     (result, { karya: work }) => {
       if (
         juriAktif &&
-        statusTinjauanJuri(work.id, juriAktif.id) === "sudah"
+        getReviewStatus(work.id, juriAktif.id) === "sudah"
       ) {
         result.sudah += 1;
       } else {
@@ -203,19 +285,10 @@ function KaryaCategoryListContent({
   const kategoriJuri = juriAktif?.kategori ?? kategori;
   const candidateCount =
     role === "juri"
-      ? new Set(
-          getKandidatKategori(kategoriJuri, stateJuri)
-            .filter(({ karyaId }) =>
-              roleItems.some(({ karya: work }) => work.id === karyaId),
-            )
-            .map(({ karyaId }) => karyaId),
-        ).size
+      ? new Set(workflowData.selections.map(({ karyaId }) => karyaId)).size
       : 0;
   const rankByWorkId = new Map(
-    getPeringkatKategori(kategoriJuri, stateJuri).map((rank) => [
-      rank.karyaId,
-      rank.peringkat,
-    ]),
+    workflowData.ranks.map((rank) => [rank.karyaId, rank.peringkat]),
   );
   const statusCards =
     role === "juri"
@@ -237,20 +310,6 @@ function KaryaCategoryListContent({
           { key: "diverifikasi", label: "Diverifikasi", value: counts.diverifikasi, color: "#00a477" },
           { key: "ditolak", label: "Ditolak", value: counts.ditolak, color: "#f04773" },
         ];
-
-  if (role === "juri" && !ready) {
-    return (
-        <main>
-          <p role="status" className="text-sm text-[#84918b]">
-            Memuat daftar karya...
-          </p>
-          <p className="mt-1 text-xs text-[#9aa49f]">
-            Status tinjauan, termasuk Belum ditinjau, akan muncul setelah data
-            dimuat.
-          </p>
-        </main>
-    );
-  }
 
   return (
     <main>
@@ -359,9 +418,9 @@ function KaryaCategoryListContent({
           )}
         </div>
 
-        {(error || (role === "juri" ? stateJuriError : "")) && (
-          <p role="alert" className="mt-3 rounded-lg bg-[#fff0f0] px-3 py-2 text-xs text-[#a33340]">
-            {error || stateJuriError}
+        {panitiaError && (
+            <p role="alert" className="mt-3 rounded-lg bg-[#fff0f0] px-3 py-2 text-xs text-[#a33340]">
+              {panitiaError}
           </p>
         )}
 
@@ -369,10 +428,16 @@ function KaryaCategoryListContent({
           {visibleItems.map((item) => {
             const status = statuses[item.karya.id] ?? item.karya.status;
             const statusStyle = getStatusStyle(status);
-            const candidateJudges = daftarJuriKandidat(
-              item.karya.id,
-              stateJuri,
-            );
+            const latestHistory = historyByKarya?.[item.karya.id]?.[0];
+            const candidateJudges = workflowData.selections
+              .filter((selection) => selection.karyaId === item.karya.id)
+              .map((selection) => ({
+                id: selection.juriId,
+                nama:
+                  workflowData.judges.find(
+                    (judge) => judge.id === selection.juriId,
+                  )?.nama ?? selection.juriNama,
+              }));
             const selectedByActive = candidateJudges.some(
               (juri) => juri.id === juriAktif?.id,
             );
@@ -432,12 +497,13 @@ function KaryaCategoryListContent({
                           <select
                             id={`status-${item.karya.id}`}
                             value={status}
-                            onChange={(event) =>
-                              setStatus(
+                            disabled={savingKaryaId === item.karya.id}
+                            onChange={(event) => {
+                              void saveStatus(
                                 item.karya.id,
                                 event.target.value as StatusKarya,
-                              )
-                            }
+                              );
+                            }}
                             className={`h-8 rounded-full border border-[#f0c458] bg-[#fffaf0] px-3 text-xs font-semibold text-[#85520d] outline-none focus:ring-2 focus:ring-[#f0c458]/30 ${statusStyle?.badgeClass ?? ""}`}
                           >
                             {STATUS_KARYA.map((option) => (
@@ -448,7 +514,7 @@ function KaryaCategoryListContent({
                           </select>
                           <button
                             type="button"
-                            onClick={() => openReview(item)}
+                            onClick={() => void openReview(item)}
                             className="rounded-lg bg-[#245c4f] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#19483e]"
                           >
                             Tinjau
@@ -457,7 +523,7 @@ function KaryaCategoryListContent({
                       ) : (
                         <button
                           type="button"
-                          onClick={() => openReview(item)}
+                          onClick={() => void openReview(item)}
                           className="rounded-lg bg-[#245c4f] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#19483e]"
                         >
                           Tinjau
@@ -485,16 +551,30 @@ function KaryaCategoryListContent({
                     )}
                   </dl>
 
+                  {role === "panitia" && latestHistory && (
+                      <p className="mb-3 rounded-md bg-[#f7faf8] px-3 py-2 text-[11px] text-[#52766a]">
+                        Perubahan terakhir oleh{" "}
+                        <span className="font-semibold">
+                          {latestHistory.panitia.nama}
+                        </span>
+                        : {getStatusLabel(
+                          latestHistory.status_lama,
+                        )}{" "}
+                        menjadi{" "}
+                        {getStatusLabel(
+                          latestHistory.status_baru,
+                        )}{" "}
+                        pada {formatWaktu(latestHistory.waktu)}
+                      </p>
+                    )}
+
                   {(role === "juri" || status === "diverifikasi") && (
                     <div className="mb-3 grid gap-2 sm:grid-cols-2">
-                      {JURI_CONTOH.filter(
-                        (juri) =>
-                          juri.kategori ===
-                          (role === "juri"
-                            ? juriAktif?.kategori
-                            : item.peserta.kategori),
-                      ).map((juri) => {
-                        const review = statusTinjauanJuri(item.karya.id, juri.id);
+                      {workflowData.judges.map((juri) => {
+                        const review = getReviewStatus(
+                          item.karya.id,
+                          juri.id,
+                        );
                         return (
                           <p
                             key={juri.id}

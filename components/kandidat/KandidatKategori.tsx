@@ -6,16 +6,12 @@ import AksiKandidatJuri from "@/components/kandidat/AksiKandidatJuri";
 import { useJuriAktif } from "@/components/juri/JuriAktifProvider";
 import { ATURAN_LOMBA } from "@/lib/aturan-lomba";
 import { formatTanggal } from "@/lib/format-tanggal";
-import { JURI_CONTOH } from "@/lib/juri-contoh";
-import { useStatusKarya } from "@/lib/review-status";
+import type { JuriContoh } from "@/lib/juri-contoh";
 import { getStatusLabel, getStatusStyle } from "@/lib/status";
-import {
-  getPeringkatKategori,
-  useKandidatKategori,
-  usePeringkatKategori as useStatePeringkatKategori,
-  useStateJuri,
-  type RiwayatJuri,
-} from "@/lib/state-juri";
+import type {
+  JuriHistory,
+  JuriWorkflowSnapshot,
+} from "@/lib/juri-workflow";
 import type { KategoriLomba, StatusKarya } from "@/types/karya";
 
 export type KandidatKategoriItem = {
@@ -27,6 +23,7 @@ type KandidatKategoriProps = {
   kategori: KategoriLomba;
   items: KandidatKategoriItem[];
   role?: "panitia" | "juri";
+  workflow: JuriWorkflowSnapshot;
 };
 
 function getInisial(nama: string): string {
@@ -42,15 +39,23 @@ export default function KandidatKategori({
   kategori,
   items,
   role = "panitia",
+  workflow,
 }: KandidatKategoriProps) {
   if (role === "juri") {
-    return <KandidatKategoriJuri kategori={kategori} items={items} />;
+    return (
+      <KandidatKategoriJuri
+        kategori={kategori}
+        items={items}
+        workflow={workflow}
+      />
+    );
   }
   return (
     <KandidatKategoriContent
       kategori={kategori}
       items={items}
       role="panitia"
+      workflow={workflow}
     />
   );
 }
@@ -58,6 +63,7 @@ export default function KandidatKategori({
 function KandidatKategoriJuri({
   kategori,
   items,
+  workflow,
 }: Omit<KandidatKategoriProps, "role">) {
   const juriAktif = useJuriAktif();
   return (
@@ -66,6 +72,7 @@ function KandidatKategoriJuri({
       items={items}
       role="juri"
       juriAktif={juriAktif}
+      workflow={workflow}
     />
   );
 }
@@ -75,46 +82,58 @@ function KandidatKategoriContent({
   items,
   role,
   juriAktif,
+  workflow,
 }: Omit<KandidatKategoriProps, "role"> & {
   role: "panitia" | "juri";
-  juriAktif?: (typeof JURI_CONTOH)[number];
+  juriAktif?: JuriContoh;
 }) {
   const [query, setQuery] = useState("");
   const judulKategori =
     kategori === "cerita" ? "Cerita HAM" : "Komik Bergambar";
   const aturan = ATURAN_LOMBA[kategori];
-  const works = useMemo(() => items.map((item) => item.karya), [items]);
-  const { statuses, ready, error: statusError } = useStatusKarya(works);
-  const { state, error: stateError } = useStateJuri();
-  const { kandidat: choices, error: candidateError } =
-    useKandidatKategori(kategori);
-  const { peringkat: ranks, error: rankError } =
-    useStatePeringkatKategori(kategori);
   const itemByWorkId = useMemo(
     () => new Map(items.map((item) => [item.karya.id, item])),
     [items],
   );
-  // TODO: hanya karya berstatus diverifikasi; nantinya juga dijaga oleh RLS Supabase.
   const candidates = useMemo(() => {
+    const selectionsByWork = new Map<
+      string,
+      (typeof workflow.selections)[number][]
+    >();
+    for (const selection of workflow.selections) {
+      const current = selectionsByWork.get(selection.karyaId) ?? [];
+      current.push(selection);
+      selectionsByWork.set(selection.karyaId, current);
+    }
     const rankByWorkId = new Map(
-      getPeringkatKategori(kategori, state).map((rank) => [
-        rank.karyaId,
-        rank,
-      ]),
+      workflow.ranks.map((rank) => [rank.karyaId, rank]),
     );
-    return choices.flatMap((choice) => {
-      const item = itemByWorkId.get(choice.karyaId);
-      if (
-        !item ||
-        (statuses[item.karya.id] ?? item.karya.status) !== "diverifikasi"
-      ) {
+    return [...selectionsByWork.entries()].flatMap(([karyaId, selections]) => {
+      const item = itemByWorkId.get(karyaId);
+      if (!item) {
         return [];
       }
-      const selectedBy = choice.juriIds
-        .map((id) => JURI_CONTOH.find((juri) => juri.id === id))
-        .filter((juri): juri is (typeof JURI_CONTOH)[number] => Boolean(juri));
-      const rank = rankByWorkId.get(choice.karyaId);
-      return [{ ...item, selectedBy, ditandaiPada: choice.ditandaiPada, rank }];
+      const selectedBy = selections.map((selection) => ({
+        id: selection.juriId,
+        nama:
+          workflow.judges.find((judge) => judge.id === selection.juriId)
+            ?.nama ?? selection.juriNama,
+      }));
+      const rank = rankByWorkId.get(karyaId);
+      return [
+        {
+          ...item,
+          selectedBy,
+          ditandaiPada: selections.reduce(
+            (earliest, selection) =>
+              selection.ditandaiPada < earliest
+                ? selection.ditandaiPada
+                : earliest,
+            selections[0].ditandaiPada,
+          ),
+          rank,
+        },
+      ];
     }).sort((first, second) => {
       if (role === "juri" && first.rank && second.rank) {
         return first.rank.peringkat - second.rank.peringkat;
@@ -127,7 +146,7 @@ function KandidatKategoriContent({
       }
       return Date.parse(first.ditandaiPada) - Date.parse(second.ditandaiPada);
     }).slice(0, aturan.batasKandidat);
-  }, [aturan.batasKandidat, choices, itemByWorkId, kategori, role, state, statuses]);
+  }, [aturan.batasKandidat, itemByWorkId, role, workflow]);
 
   const searchTerm = query.trim().toLocaleLowerCase("id-ID");
   const filteredCandidates = candidates.filter(
@@ -137,6 +156,7 @@ function KandidatKategoriContent({
       peserta.asal.toLocaleLowerCase("id-ID").includes(searchTerm),
   );
   const candidateIds = new Set(candidates.map(({ karya }) => karya.id));
+  const ranks = workflow.ranks;
   const slots = ranks.filter(({ karyaId }) => candidateIds.has(karyaId));
   const slotByRank = new Map(
     slots.map((rank) => [
@@ -144,40 +164,13 @@ function KandidatKategoriContent({
       itemByWorkId.get(rank.karyaId)?.peserta.nama ?? "",
     ]),
   );
-  const history = state.riwayat
-    .filter((entry) => {
-      const item = itemByWorkId.get(entry.karyaId);
-      return (
-        item !== undefined &&
-        (statuses[item.karya.id] ?? item.karya.status) === "diverifikasi"
-      );
-    })
+  const history = workflow.history
+    .filter((entry) => itemByWorkId.has(entry.karyaId))
     .sort((first, second) => Date.parse(second.waktu) - Date.parse(first.waktu))
     .slice(0, 10);
-  const error = statusError || candidateError || rankError || stateError;
-
-  if (role === "juri" && !ready) {
-    return (
-      <main className="mx-auto max-w-[920px]">
-        {error && (
-          <p role="alert" className="mb-4 rounded-lg bg-[#fff0f0] px-3 py-2 text-xs text-[#a33340]">
-            {error}
-          </p>
-        )}
-        <p role="status" className="text-sm text-[#84918b]">
-          Memuat daftar karya...
-        </p>
-      </main>
-    );
-  }
 
   return (
     <main className="mx-auto max-w-[920px]">
-      {error && (
-        <p role="alert" className="mb-4 rounded-lg bg-[#fff0f0] px-3 py-2 text-xs text-[#a33340]">
-          {error}
-        </p>
-      )}
       {role === "panitia" ? (
         <section className="mb-4 rounded-xl border border-[#dce5e0] bg-white px-5 py-7 text-center shadow-[0_2px_8px_rgba(27,61,49,0.06)] sm:py-8">
           <svg
@@ -289,8 +282,7 @@ function KandidatKategoriContent({
                       className="rounded-md bg-[#f7faf8] px-3 py-2 text-[11px] text-[#52766a]"
                     >
                       <p>
-                        {JURI_CONTOH.find((juri) => juri.id === entry.juriId)
-                          ?.nama ?? entry.juriId}
+                        {entry.juriNama}
                         {" — "}
                         {itemByWorkId.get(entry.karyaId)?.peserta.nama ?? entry.karyaId}
                         {" — "}
@@ -319,7 +311,7 @@ function KandidatKategoriContent({
           <ol className="mt-3 space-y-2" aria-label={`Kandidat ${judulKategori}`}>
             {filteredCandidates.map((candidate, index) => {
               const status =
-                statuses[candidate.karya.id] ?? candidate.karya.status;
+                candidate.karya.status;
               const statusStyle = getStatusStyle(status);
               const isSelectedByActive = candidate.selectedBy.some(
                 (juri) => juri.id === juriAktif?.id,
@@ -384,7 +376,7 @@ function KandidatKategoriContent({
                       </span>
                       {role === "juri" && rank && (
                         <span className="mt-1 block text-[10px] text-[#84918b]">
-                          Ditetapkan oleh {rank.ditetapkanOleh} pada{" "}
+                          Ditetapkan oleh {rank.ditetapkanOlehNama} pada{" "}
                           {formatTanggal(rank.ditetapkanPada.slice(0, 10))}
                         </span>
                       )}
@@ -394,8 +386,8 @@ function KandidatKategoriContent({
                     <AksiKandidatJuri
                       karyaId={candidate.karya.id}
                       namaPeserta={candidate.peserta.nama}
-                      juriAktif={juriAktif}
                       dipilihAktif={isSelectedByActive}
+                      lastSelected={candidate.selectedBy.length === 1}
                       peringkat={rank}
                       jumlahPeringkat={aturan.jumlahPeringkat}
                       slotByRank={Object.fromEntries(
@@ -431,7 +423,7 @@ function KandidatKategoriContent({
   );
 }
 
-function describeHistory(entry: RiwayatJuri): string {
+function describeHistory(entry: JuriHistory): string {
   switch (entry.jenis) {
     case "jadikan-kandidat":
       return "dijadikan kandidat";
