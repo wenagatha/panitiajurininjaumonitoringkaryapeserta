@@ -3,6 +3,7 @@ import "server-only";
 import { requireStaffRole, type StaffRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { KaryaDaftarItem } from "@/components/dashboard/KaryaCategoryList";
+import type { PanitiaRiwayatStatus } from "@/lib/panitia-actions";
 import type { KategoriLomba, StatusKarya } from "@/types/karya";
 
 export type JuriSelection = {
@@ -64,6 +65,7 @@ type WorkRow = {
   id: string;
   peserta_id: string;
   status: StatusKarya;
+  alasan_penolakan: string | null;
   url_karya: string | null;
   url_pernyataan: string | null;
   peserta: ParticipantRow;
@@ -89,6 +91,8 @@ function parseWork(value: unknown): WorkRow {
     typeof value.id !== "string" ||
     typeof value.peserta_id !== "string" ||
     !isStatus(value.status) ||
+    (value.alasan_penolakan !== null &&
+      typeof value.alasan_penolakan !== "string") ||
     (value.url_karya !== null && typeof value.url_karya !== "string") ||
     (value.url_pernyataan !== null &&
       typeof value.url_pernyataan !== "string") ||
@@ -107,6 +111,7 @@ function parseWork(value: unknown): WorkRow {
     id: value.id,
     peserta_id: value.peserta_id,
     status: value.status,
+    alasan_penolakan: value.alasan_penolakan,
     url_karya: value.url_karya,
     url_pernyataan: value.url_pernyataan,
     peserta: {
@@ -116,6 +121,39 @@ function parseWork(value: unknown): WorkRow {
       kategori: participant.kategori,
       tanggal_daftar: participant.tanggal_daftar,
       url_kartu: participant.url_kartu,
+    },
+  };
+}
+
+function parsePanitiaStatusHistory(value: unknown): {
+  karyaId: string;
+  entry: PanitiaRiwayatStatus;
+} {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    typeof value.karya_id !== "string" ||
+    !isStatus(value.status_lama) ||
+    !isStatus(value.status_baru) ||
+    (value.alasan_penolakan !== null &&
+      typeof value.alasan_penolakan !== "string") ||
+    typeof value.waktu !== "string"
+  ) {
+    throw new Error("Riwayat status karya Supabase tidak valid.");
+  }
+  const panitiaName =
+    isRecord(value.panitia) && typeof value.panitia.nama === "string"
+      ? value.panitia.nama
+      : "Panitia";
+  return {
+    karyaId: value.karya_id,
+    entry: {
+      id: value.id,
+      status_lama: value.status_lama,
+      status_baru: value.status_baru,
+      alasan_penolakan: value.alasan_penolakan,
+      waktu: value.waktu,
+      panitia: { nama: panitiaName },
     },
   };
 }
@@ -154,6 +192,7 @@ function toItem(row: WorkRow): KaryaDaftarItem {
       urlKarya: row.url_karya ?? "",
       urlPernyataan: row.url_pernyataan ?? "",
     },
+    alasanPenolakan: row.alasan_penolakan,
     peserta: {
       id: row.peserta.id,
       nama: row.peserta.nama,
@@ -265,20 +304,25 @@ function parseReview(value: unknown): JuriReview {
 }
 
 const WORK_SELECT =
-  "id,peserta_id,status,url_karya,url_pernyataan,peserta!inner(id,nama,asal,kategori,tanggal_daftar,url_kartu)";
+  "id,peserta_id,status,alasan_penolakan,url_karya,url_pernyataan,peserta!inner(id,nama,asal,kategori,tanggal_daftar,url_kartu)";
 const PROFILE_RELATION = "juri:profiles!{table}_juri_id_fkey(id,nama)";
 
 export async function getJuriWorkflowData(
   kategori: KategoriLomba,
   role: StaffRole,
-): Promise<{ items: KaryaDaftarItem[]; workflow: JuriWorkflowSnapshot }> {
+  includeRejected = false,
+): Promise<{
+  items: KaryaDaftarItem[];
+  workflow: JuriWorkflowSnapshot;
+  statusHistoryByKarya: Record<string, PanitiaRiwayatStatus[]>;
+}> {
   await requireStaffRole(role);
   const supabase = await createClient();
   const worksResult = await supabase
     .from("karya")
     .select(WORK_SELECT)
     .eq("peserta.kategori", kategori)
-    .eq("status", "diverifikasi")
+    .in("status", includeRejected ? ["diverifikasi", "ditolak"] : ["diverifikasi"])
     .order("created_at", { ascending: false });
   if (worksResult.error) {
     throw new Error(`Daftar karya kategori ${kategori} gagal dimuat: ${worksResult.error.message}`);
@@ -290,10 +334,11 @@ export async function getJuriWorkflowData(
     return {
       items,
       workflow: { judges: [], selections: [], ranks: [], history: [], reviews: [] },
+      statusHistoryByKarya: {},
     };
   }
 
-  const [judgeResult, selectionResult, ranksResult, historyResult, reviewsResult] =
+  const [judgeResult, selectionResult, ranksResult, historyResult, reviewsResult, statusHistoryResult] =
     await Promise.all([
       supabase
         .from("profiles")
@@ -317,6 +362,11 @@ export async function getJuriWorkflowData(
         .from("tinjauan_juri")
         .select(`karya_id,juri_id,status,mulai_pada,terakhir_aktif,selesai_pada,${PROFILE_RELATION.replace("{table}", "tinjauan_juri")}`)
         .in("karya_id", karyaIds),
+      supabase
+        .from("riwayat_panitia")
+        .select("id,karya_id,status_lama,status_baru,alasan_penolakan,waktu")
+        .in("karya_id", karyaIds)
+        .order("waktu", { ascending: false }),
     ]);
 
   if (judgeResult.error) {
@@ -338,6 +388,15 @@ export async function getJuriWorkflowData(
   if (reviewsResult.error) {
     throw new Error(`Status tinjauan juri gagal dimuat: ${reviewsResult.error.message}`);
   }
+  if (statusHistoryResult.error) {
+    throw new Error(`Riwayat status karya gagal dimuat: ${statusHistoryResult.error.message}`);
+  }
+
+  const statusHistoryByKarya: Record<string, PanitiaRiwayatStatus[]> = {};
+  for (const value of statusHistoryResult.data ?? []) {
+    const history = parsePanitiaStatusHistory(value);
+    (statusHistoryByKarya[history.karyaId] ??= []).push(history.entry);
+  }
 
   return {
     items,
@@ -350,16 +409,31 @@ export async function getJuriWorkflowData(
         .filter((entry) => entry.karyaId),
       reviews: (reviewsResult.data ?? []).map(parseReview),
     },
+    statusHistoryByKarya,
   };
 }
 
 export async function getJuriWorkDetail(
   karyaId: string,
   kategori: KategoriLomba,
-): Promise<{ item: KaryaDaftarItem; workflow: JuriWorkflowSnapshot } | null> {
-  const { items, workflow } = await getJuriWorkflowData(kategori, "juri");
+): Promise<{
+  item: KaryaDaftarItem;
+  workflow: JuriWorkflowSnapshot;
+  history: PanitiaRiwayatStatus[];
+} | null> {
+  const { items, workflow, statusHistoryByKarya } = await getJuriWorkflowData(
+    kategori,
+    "juri",
+    true,
+  );
   const item = items.find(({ karya }) => karya.id === karyaId);
-  return item ? { item, workflow } : null;
+  return item
+    ? {
+        item,
+        workflow,
+        history: statusHistoryByKarya[item.karya.id] ?? [],
+      }
+    : null;
 }
 
 export async function getJuriKaryaForCategory(

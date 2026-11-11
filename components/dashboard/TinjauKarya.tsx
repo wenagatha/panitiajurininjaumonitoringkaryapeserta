@@ -74,6 +74,9 @@ function TinjauKaryaContent({
       ? panitiaStatus
       : item.karya.status;
   const [draftStatus, setDraftStatus] = useState<StatusKarya>(item.karya.status);
+  const [rejectionReason, setRejectionReason] = useState(
+    item.alasanPenolakan ?? "",
+  );
   const [saved, setSaved] = useState(false);
   const workflowData = workflow ?? {
     judges: [],
@@ -280,6 +283,7 @@ function TinjauKaryaContent({
         const { history: newHistory } = await updatePanitiaKaryaStatus(
           item.karya.id,
           draftStatus,
+          draftStatus === "ditolak" ? rejectionReason : undefined,
         );
         setPanitiaStatus(draftStatus);
         if (newHistory) {
@@ -360,9 +364,36 @@ function TinjauKaryaContent({
           <Notifikasi notifikasi={notifikasi} onClose={tutupNotifikasi} />
         )}
         <div className="rounded-lg border border-[#dce5e0] bg-white p-5">
+          <span
+            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyle?.badgeClass ?? ""}`}
+          >
+            {getStatusLabel(status)}
+          </span>
           <p className="text-sm text-[#84918b]">
-            Karya ini tidak tersedia untuk ditinjau.
+            Karya ini tidak tersedia untuk ditinjau juri.
           </p>
+          {status === "ditolak" && (
+            <div className="mt-3 rounded-md border-l-[3px] border-[#d95769] bg-[#fff1f3] px-3 py-2 text-xs text-[#7d3b46]">
+              <p className="font-semibold">Alasan penolakan</p>
+              <p className="mt-1">
+                {item.alasanPenolakan ||
+                  "Alasan belum dicatat untuk penolakan ini."}
+              </p>
+              {history
+                .filter(
+                  (entry) =>
+                    entry.status_baru === "ditolak" &&
+                    entry.alasan_penolakan,
+                )
+                .map((entry) => (
+                  <p key={entry.id} className="mt-2 border-t border-[#f1c7ce] pt-2">
+                    Riwayat {formatWaktu(entry.waktu)} oleh{" "}
+                    <span className="font-semibold">{entry.panitia.nama}</span>
+                    : {entry.alasan_penolakan}
+                  </p>
+                ))}
+            </div>
+          )}
           <Link
             href={backHref}
             className="mt-3 inline-block text-xs font-semibold text-[#3d7563] hover:underline"
@@ -492,7 +523,11 @@ function TinjauKaryaContent({
                   id={`decision-${item.karya.id}`}
                   value={draftStatus}
                   onChange={(event) => {
-                    setDraftStatus(event.target.value as StatusKarya);
+                    const nextStatus = event.target.value as StatusKarya;
+                    if (nextStatus === "ditolak" && draftStatus !== "ditolak") {
+                      setRejectionReason("");
+                    }
+                    setDraftStatus(nextStatus);
                     setSaved(false);
                   }}
                   className="h-10 w-full rounded-lg border border-[#e0b349] bg-[#fffaf0] px-3 text-xs font-semibold text-[#85520d] outline-none focus:ring-2 focus:ring-[#f0c458]/30 sm:max-w-[350px]"
@@ -503,6 +538,22 @@ function TinjauKaryaContent({
                     </option>
                   ))}
                 </select>
+                {draftStatus === "ditolak" && (
+                  <label className="w-full text-xs font-semibold text-[#8b3443] sm:max-w-[350px]">
+                    Alasan penolakan (wajib)
+                    <textarea
+                      value={rejectionReason}
+                      onChange={(event) =>
+                        setRejectionReason(event.target.value)
+                      }
+                      maxLength={1000}
+                      rows={3}
+                      required
+                      className="mt-2 w-full rounded-md border border-[#e4c4c9] bg-white px-3 py-2 text-xs font-normal text-[#354a42] outline-none focus:border-[#b85b6b] focus:ring-2 focus:ring-[#b85b6b]/15"
+                      placeholder="Jelaskan alasan karya ditolak..."
+                    />
+                  </label>
+                )}
                 <button
                   type="button"
                   onClick={() => void saveDecision()}
@@ -524,7 +575,7 @@ function TinjauKaryaContent({
             </div>
           )}
 
-          {role === "panitia" && (
+          {(role === "panitia" || history.length > 0) && (
             <section className="mt-5 border-t border-[#e8eeea] pt-5">
               <h2 className="text-sm font-bold text-[#29463d]">
                 Riwayat perubahan status
@@ -549,6 +600,12 @@ function TinjauKaryaContent({
                       <span className="font-semibold">
                         {getStatusLabel(entry.status_baru)}
                       </span>
+                      {entry.status_baru === "ditolak" &&
+                        entry.alasan_penolakan && (
+                          <p className="mt-1">
+                            Alasan: {entry.alasan_penolakan}
+                          </p>
+                        )}
                       <time
                         className="mt-1 block text-[11px] text-[#84918b]"
                         dateTime={entry.waktu}

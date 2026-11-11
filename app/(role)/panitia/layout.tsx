@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Suspense } from "react";
+import { connection } from "next/server";
 import Sidebar from "@/components/layout/Sidebar";
 import { requireStaffRole } from "@/lib/auth";
 
@@ -8,6 +9,7 @@ async function PanitiaLayoutContent({
 }: {
   children: ReactNode;
 }) {
+  await connection();
   const profile = await requireStaffRole("panitia");
 
   return (

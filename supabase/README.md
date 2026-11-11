@@ -57,6 +57,18 @@ mencatat setiap perubahan status secara bersama:
 Jika patch SQL belum dijalankan, halaman tersebut belum dapat memuat riwayat
 atau menyimpan keputusan.
 
+## Alasan penolakan karya
+
+Setelah `patches/panitia-status-audit.sql` diterapkan, jalankan isi
+`patches/rejection-reasons.sql` di SQL Editor. Patch menambah kolom alasan pada
+karya dan riwayat status, mewajibkan alasan (maksimal 1000 karakter) saat
+panitia menolak karya, serta memberi panitia dan juri akses baca ke riwayat
+status. Daftar karya juri menampilkan karya yang ditolak beserta alasan, tetapi
+karya tersebut tidak dapat ditinjau sebagai karya terverifikasi.
+
+Setiap penolakan baru menyimpan alasan dalam riwayat. Pastikan proyek Supabase
+yang dipilih benar sebelum menjalankan patch.
+
 ## Alur peninjauan dan penetapan juri
 
 Halaman juri, kandidat, dan papan peringkat membaca data bersama dari Supabase.

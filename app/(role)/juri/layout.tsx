@@ -1,11 +1,13 @@
 import type { ReactNode } from "react";
 import { Suspense } from "react";
+import { connection } from "next/server";
 import Sidebar from "@/components/layout/Sidebar";
 import { JuriAktifProvider } from "@/components/juri/JuriAktifProvider";
 import { getJuriAktif } from "@/lib/juri-aktif";
 import { requireStaffRole } from "@/lib/auth";
 
 async function JuriLayoutContent({ children }: { children: ReactNode }) {
+  await connection();
   const [profile, juriAktif] = await Promise.all([
     requireStaffRole("juri"),
     getJuriAktif(),

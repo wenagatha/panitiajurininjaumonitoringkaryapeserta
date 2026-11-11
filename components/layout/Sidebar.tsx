@@ -205,6 +205,35 @@ function Brand() {
   );
 }
 
+function RoleBanner({ role }: { role: Role }) {
+  const isPanitia = role === "panitia";
+
+  return (
+    <div
+      className={`mx-4 mb-5 rounded-xl border px-3 py-2.5 ${
+        isPanitia
+          ? "border-[#c8def5] bg-[#edf6ff]"
+          : "border-[#cbd6f5] bg-[#eef2ff]"
+      }`}
+    >
+      <p
+        className={`text-[9px] font-bold tracking-[0.14em] ${
+          isPanitia ? "text-[#4776a8]" : "text-[#596ba6]"
+        }`}
+      >
+        AREA AKSES
+      </p>
+      <p
+        className={`mt-0.5 text-xs font-bold ${
+          isPanitia ? "text-[#245b91]" : "text-[#3e528f]"
+        }`}
+      >
+        {isPanitia ? "PANITIA" : "JURI"}
+      </p>
+    </div>
+  );
+}
+
 function Navigation({ role, onNavigate }: { role: Role; onNavigate?: () => void }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -212,6 +241,18 @@ function Navigation({ role, onNavigate }: { role: Role; onNavigate?: () => void 
   const isCandidateReview = searchParams.get("dari") === "kandidat";
   const isWinnerReview = searchParams.get("dari") === "pemenang";
   const menu = ROLE_MENUS.find((item) => item.role === role);
+  const activeItemClass =
+    role === "panitia"
+      ? "bg-[#dceeff] font-semibold text-[#245b91]"
+      : "bg-[#e2eaff] font-semibold text-[#3e528f]";
+  const activeSubItemClass =
+    role === "panitia"
+      ? "bg-[#dceeff] font-semibold text-[#245b91]"
+      : "bg-[#e2eaff] font-semibold text-[#3e528f]";
+  const hoverItemClass =
+    role === "panitia"
+      ? "text-[#53697d] hover:bg-[#f1f7fd] hover:text-[#245b91]"
+      : "text-[#59647e] hover:bg-[#f2f5ff] hover:text-[#3e528f]";
 
   return (
     <nav aria-label={`Menu ${role}`}>
@@ -250,8 +291,8 @@ function Navigation({ role, onNavigate }: { role: Role; onNavigate?: () => void 
                     }
                     className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] transition ${
                       isParentActive
-                        ? "bg-[#eaf4ef] font-semibold text-[#245c4f]"
-                        : "text-[#606d69] hover:bg-[#f4f7f5] hover:text-[#245c4f]"
+                        ? activeItemClass
+                        : hoverItemClass
                     }`}
                   >
                     <MenuIcon name={item.icon} />
@@ -287,8 +328,8 @@ function Navigation({ role, onNavigate }: { role: Role; onNavigate?: () => void 
                               aria-current={isSubItemActive ? "page" : undefined}
                               className={`block rounded-lg px-3 py-2 text-xs transition ${
                                 isSubItemActive
-                                  ? "bg-[#eaf4ef] font-semibold text-[#245c4f]"
-                                  : "text-[#606d69] hover:bg-[#f4f7f5] hover:text-[#245c4f]"
+                                ? activeSubItemClass
+                                : hoverItemClass
                               }`}
                             >
                               {subItem.label}
@@ -371,9 +412,16 @@ export default function Sidebar({
 
   return (
     <>
-      <aside className="sticky top-0 hidden h-screen w-[248px] shrink-0 flex-col border-r border-[#e5ebe8] bg-white md:flex">
+      <aside
+        className={`sticky top-0 hidden h-screen w-[248px] shrink-0 flex-col border-r md:flex ${
+          role === "panitia"
+            ? "border-[#d7e5f2] bg-[#f8fbff]"
+            : "border-[#d9e0f2] bg-[#f8f9ff]"
+        }`}
+      >
         <Brand />
-        <div className="mt-4">
+        <RoleBanner role={role} />
+        <div>
           <Suspense fallback={null}>
             <Navigation role={role} />
           </Suspense>
@@ -383,7 +431,13 @@ export default function Sidebar({
         </div>
       </aside>
 
-      <div className="sticky top-0 z-30 border-b border-[#e5ebe8] bg-white md:hidden">
+      <div
+        className={`sticky top-0 z-30 border-b md:hidden ${
+          role === "panitia"
+            ? "border-[#d7e5f2] bg-[#f8fbff]"
+            : "border-[#d9e0f2] bg-[#f8f9ff]"
+        }`}
+      >
         <div className="flex items-center justify-between">
           <Brand />
           <button
@@ -391,7 +445,11 @@ export default function Sidebar({
             aria-label={isMobileOpen ? "Tutup menu" : "Buka menu"}
             aria-expanded={isMobileOpen}
             onClick={() => setIsMobileOpen((open) => !open)}
-            className="mr-4 rounded-lg p-2 text-[#245c4f] hover:bg-[#eef5f1]"
+            className={`mr-4 rounded-lg p-2 ${
+              role === "panitia"
+                ? "text-[#245b91] hover:bg-[#eaf4ff]"
+                : "text-[#3e528f] hover:bg-[#e9eeff]"
+            }`}
           >
             <svg
               aria-hidden="true"
@@ -410,7 +468,12 @@ export default function Sidebar({
           </button>
         </div>
         {isMobileOpen && (
-          <div className="max-h-[calc(100vh-72px)] overflow-y-auto border-t border-[#edf0ee] py-4">
+          <div
+            className={`max-h-[calc(100vh-72px)] overflow-y-auto border-t py-4 ${
+              role === "panitia" ? "border-[#e1ebf5]" : "border-[#e3e7f4]"
+            }`}
+          >
+            <RoleBanner role={role} />
             <Suspense fallback={null}>
               <Navigation
                 role={role}

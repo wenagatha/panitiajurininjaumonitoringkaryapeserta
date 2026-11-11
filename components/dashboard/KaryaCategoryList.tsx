@@ -24,6 +24,7 @@ export type KaryaDaftarItem = {
     Karya,
     "id" | "pesertaId" | "status" | "urlKarya" | "urlPernyataan"
   >;
+  alasanPenolakan?: string | null;
   peserta: Pick<
     Peserta,
     "id" | "nama" | "asal" | "kategori" | "tanggalDaftar"
@@ -50,7 +51,9 @@ export function filterKaryaUntukRole(
   }
   return items.filter(
     ({ karya, peserta }) =>
-      (statuses[karya.id] ?? karya.status) === "diverifikasi" &&
+      ["diverifikasi", "ditolak"].includes(
+        statuses[karya.id] ?? karya.status,
+      ) &&
       (!kategori || peserta.kategori === kategori),
   );
 }
@@ -83,6 +86,7 @@ export default function KaryaCategoryList({
       <KaryaCategoryListJuri
         kategori={kategori}
         items={items}
+        historyByKarya={historyByKarya}
         workflow={workflow}
       />
     );
@@ -100,6 +104,7 @@ export default function KaryaCategoryList({
 function KaryaCategoryListJuri({
   kategori,
   items,
+  historyByKarya,
   workflow,
 }: Omit<KaryaCategoryListProps, "role">) {
   const juriAktif = useJuriAktif();
@@ -108,6 +113,7 @@ function KaryaCategoryListJuri({
       kategori={kategori}
       items={items}
       role="juri"
+      historyByKarya={historyByKarya}
       juriAktif={juriAktif}
       workflow={workflow}
     />
@@ -142,6 +148,10 @@ function KaryaCategoryListContent({
   );
   const [panitiaError, setPanitiaError] = useState("");
   const [savingKaryaId, setSavingKaryaId] = useState<string | null>(null);
+  const [pendingRejectionId, setPendingRejectionId] = useState<string | null>(
+    null,
+  );
+  const [rejectionReason, setRejectionReason] = useState("");
   const [query, setQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<"semua" | StatusKarya>(
     "semua",
@@ -225,11 +235,15 @@ function KaryaCategoryListContent({
     return review.status;
   }
 
-  async function saveStatus(id: string, status: StatusKarya) {
+  async function saveStatus(
+    id: string,
+    status: StatusKarya,
+    reason?: string,
+  ) {
     setPanitiaError("");
     setSavingKaryaId(id);
     try {
-      await updatePanitiaKaryaStatus(id, status);
+      await updatePanitiaKaryaStatus(id, status, reason);
       setPanitiaStatuses((previous) => ({ ...previous, [id]: status }));
       router.refresh();
       return true;
@@ -270,6 +284,9 @@ function KaryaCategoryListContent({
   );
   const juriReviewCounts = roleItems.reduce(
     (result, { karya: work }) => {
+      if (work.status !== "diverifikasi") {
+        return result;
+      }
       if (
         juriAktif &&
         getReviewStatus(work.id, juriAktif.id) === "sudah"
@@ -461,6 +478,13 @@ function KaryaCategoryListContent({
                       {labelKarya}
                     </span>
                     <div className="flex items-center gap-2">
+                      {role === "juri" && (
+                        <span
+                          className={`inline-flex w-fit rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyle?.badgeClass ?? ""}`}
+                        >
+                          {getStatusLabel(status)}
+                        </span>
+                      )}
                       {status === "diverifikasi" &&
                         role === "panitia" &&
                         candidateJudges.length > 0 && (
@@ -499,11 +523,15 @@ function KaryaCategoryListContent({
                             value={status}
                             disabled={savingKaryaId === item.karya.id}
                             onChange={(event) => {
-                              void saveStatus(
-                                item.karya.id,
-                                event.target.value as StatusKarya,
-                              );
-                            }}
+                                const nextStatus = event.target.value as StatusKarya;
+                                if (nextStatus === "ditolak") {
+                                  setRejectionReason("");
+                                  setPendingRejectionId(item.karya.id);
+                                  return;
+                                }
+                                setPendingRejectionId(null);
+                                void saveStatus(item.karya.id, nextStatus);
+                              }}
                             className={`h-8 rounded-full border border-[#f0c458] bg-[#fffaf0] px-3 text-xs font-semibold text-[#85520d] outline-none focus:ring-2 focus:ring-[#f0c458]/30 ${statusStyle?.badgeClass ?? ""}`}
                           >
                             {STATUS_KARYA.map((option) => (
@@ -521,25 +549,92 @@ function KaryaCategoryListContent({
                           </button>
                         </>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => void openReview(item)}
-                          className="rounded-lg bg-[#245c4f] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#19483e]"
-                        >
-                          Tinjau
-                        </button>
+                        status === "ditolak" ? (
+                          <button
+                            type="button"
+                            onClick={() => void openReview(item)}
+                            className="rounded-lg border border-[#dce5e0] px-4 py-2 text-xs font-semibold text-[#345248] transition hover:bg-[#f5faf7]"
+                          >
+                            Lihat alasan
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => void openReview(item)}
+                            className="rounded-lg bg-[#245c4f] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#19483e]"
+                          >
+                            Tinjau
+                          </button>
+                        )
                       )}
                     </div>
                   </div>
 
+                  {pendingRejectionId === item.karya.id && (
+                    <div className="mb-3 rounded-lg border border-[#f1c7ce] bg-[#fff7f8] p-3">
+                      <label
+                        htmlFor={`rejection-reason-${item.karya.id}`}
+                        className="block text-xs font-semibold text-[#8b3443]"
+                      >
+                        Alasan penolakan (wajib)
+                      </label>
+                      <textarea
+                        id={`rejection-reason-${item.karya.id}`}
+                        value={rejectionReason}
+                        onChange={(event) =>
+                          setRejectionReason(event.target.value)
+                        }
+                        maxLength={1000}
+                        rows={3}
+                        required
+                        className="mt-2 w-full rounded-md border border-[#e4c4c9] bg-white px-3 py-2 text-xs text-[#354a42] outline-none focus:border-[#b85b6b] focus:ring-2 focus:ring-[#b85b6b]/15"
+                        placeholder="Jelaskan alasan karya ditolak..."
+                      />
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={savingKaryaId === item.karya.id}
+                          onClick={async () => {
+                            const saved = await saveStatus(
+                              item.karya.id,
+                              "ditolak",
+                              rejectionReason,
+                            );
+                            if (saved) {
+                              setPendingRejectionId(null);
+                              setRejectionReason("");
+                            }
+                          }}
+                          className="rounded-md bg-[#a33340] px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"
+                        >
+                          Simpan penolakan
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPendingRejectionId(null);
+                            setRejectionReason("");
+                          }}
+                          className="rounded-md border border-[#d9c9cc] px-3 py-2 text-xs font-semibold text-[#6e5459]"
+                        >
+                          Batal
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   <dl className={`grid gap-3 py-3 text-xs ${role === "panitia" ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
                     <div>
                       <dt className="text-[#84918b]">Peserta</dt>
-                      <dd className="mt-0.5 font-medium text-[#345248]">{item.peserta.nama}</dd>
+                      <dd className={`mt-0.5 text-[#345248] ${role === "juri" ? "font-bold" : "font-medium"}`}>
+                        {item.peserta.nama}
+                      </dd>
                     </div>
                     <div>
                       <dt className="text-[#84918b]">Asal</dt>
-                      <dd className="mt-0.5 font-medium text-[#345248]">{item.peserta.asal}</dd>
+                      <dd className={`mt-0.5 text-[#345248] ${role === "juri" ? "font-bold" : "font-medium"}`}>
+                        {item.peserta.asal}
+                      </dd>
                     </div>
                     {role === "panitia" && (
                       <div>
@@ -551,7 +646,15 @@ function KaryaCategoryListContent({
                     )}
                   </dl>
 
-                  {role === "panitia" && latestHistory && (
+                  {status === "ditolak" && (
+                    <p className="mb-3 rounded-md border-l-[3px] border-[#d95769] bg-[#fff1f3] px-3 py-2 text-xs text-[#7d3b46]">
+                      <span className="font-semibold">Alasan penolakan:</span>{" "}
+                      {item.alasanPenolakan ||
+                        "Alasan belum dicatat untuk penolakan ini."}
+                    </p>
+                  )}
+
+                  {latestHistory && (
                       <p className="mb-3 rounded-md bg-[#f7faf8] px-3 py-2 text-[11px] text-[#52766a]">
                         Perubahan terakhir oleh{" "}
                         <span className="font-semibold">
@@ -565,10 +668,19 @@ function KaryaCategoryListContent({
                           latestHistory.status_baru,
                         )}{" "}
                         pada {formatWaktu(latestHistory.waktu)}
-                      </p>
+                          {latestHistory.status_baru === "ditolak" &&
+                            latestHistory.alasan_penolakan && (
+                              <>
+                                . Alasan:{" "}
+                                <span className="font-semibold">
+                                  {latestHistory.alasan_penolakan}
+                                </span>
+                              </>
+                            )}
+                        </p>
                     )}
 
-                  {(role === "juri" || status === "diverifikasi") && (
+                    {status === "diverifikasi" && (
                     <div className="mb-3 grid gap-2 sm:grid-cols-2">
                       {workflowData.judges.map((juri) => {
                         const review = getReviewStatus(

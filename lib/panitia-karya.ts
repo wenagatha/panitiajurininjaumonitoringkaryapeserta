@@ -20,6 +20,7 @@ type KaryaRow = {
   id: string;
   peserta_id: string;
   status: StatusKarya;
+  alasan_penolakan: string | null;
   url_karya: string | null;
   url_pernyataan: string | null;
   peserta: PesertaRow;
@@ -30,6 +31,7 @@ type RiwayatRow = {
   karya_id: string;
   status_lama: StatusKarya;
   status_baru: StatusKarya;
+  alasan_penolakan: string | null;
   waktu: string;
   panitia: { nama: string };
 };
@@ -52,6 +54,8 @@ function parseKaryaRow(value: unknown): KaryaRow {
     typeof value.peserta_id !== "string" ||
     typeof value.status !== "string" ||
     !isStatus(value.status) ||
+    (value.alasan_penolakan !== null &&
+      typeof value.alasan_penolakan !== "string") ||
     (value.url_karya !== null && typeof value.url_karya !== "string") ||
     (value.url_pernyataan !== null &&
       typeof value.url_pernyataan !== "string") ||
@@ -70,6 +74,7 @@ function parseKaryaRow(value: unknown): KaryaRow {
     id: value.id,
     peserta_id: value.peserta_id,
     status: value.status,
+    alasan_penolakan: value.alasan_penolakan,
     url_karya: value.url_karya,
     url_pernyataan: value.url_pernyataan,
     peserta: {
@@ -93,6 +98,8 @@ function parseRiwayatRow(value: unknown): RiwayatRow {
     !isStatus(value.status_lama) ||
     typeof value.status_baru !== "string" ||
     !isStatus(value.status_baru) ||
+    (value.alasan_penolakan !== null &&
+      typeof value.alasan_penolakan !== "string") ||
     typeof value.waktu !== "string" ||
     typeof value.panitia.nama !== "string"
   ) {
@@ -103,6 +110,7 @@ function parseRiwayatRow(value: unknown): RiwayatRow {
     karya_id: value.karya_id,
     status_lama: value.status_lama,
     status_baru: value.status_baru,
+    alasan_penolakan: value.alasan_penolakan,
     waktu: value.waktu,
     panitia: { nama: value.panitia.nama },
   };
@@ -143,6 +151,7 @@ function toItem(row: KaryaRow): KaryaDaftarItem {
       urlKarya: row.url_karya ?? "",
       urlPernyataan: row.url_pernyataan ?? "",
     },
+    alasanPenolakan: row.alasan_penolakan,
     peserta: {
       id: row.peserta.id,
       nama: row.peserta.nama,
@@ -155,7 +164,7 @@ function toItem(row: KaryaRow): KaryaDaftarItem {
 }
 
 const KARYA_SELECT =
-  "id,peserta_id,status,url_karya,url_pernyataan,peserta!inner(id,nama,asal,kategori,tanggal_daftar,url_kartu)";
+  "id,peserta_id,status,alasan_penolakan,url_karya,url_pernyataan,peserta!inner(id,nama,asal,kategori,tanggal_daftar,url_kartu)";
 
 function toHistory(row: RiwayatRow): PanitiaRiwayatStatus {
   if (!isStatus(row.status_lama) || !isStatus(row.status_baru)) {
@@ -165,6 +174,7 @@ function toHistory(row: RiwayatRow): PanitiaRiwayatStatus {
     id: row.id,
     status_lama: row.status_lama,
     status_baru: row.status_baru,
+    alasan_penolakan: row.alasan_penolakan,
     waktu: row.waktu,
     panitia: row.panitia,
   };
@@ -194,7 +204,7 @@ export async function getPanitiaKaryaByKategori(kategori: KategoriLomba) {
   const { data: historyRows, error: historyError } = await supabase
     .from("riwayat_panitia")
     .select(
-      "id,karya_id,status_lama,status_baru,waktu,panitia:profiles!riwayat_panitia_panitia_id_fkey(nama)",
+      "id,karya_id,status_lama,status_baru,alasan_penolakan,waktu,panitia:profiles!riwayat_panitia_panitia_id_fkey(nama)",
     )
     .in("karya_id", ids)
     .order("waktu", { ascending: false });
@@ -232,7 +242,7 @@ export async function getPanitiaKaryaById(id: string) {
   const { data: historyRows, error: historyError } = await supabase
     .from("riwayat_panitia")
     .select(
-      "id,karya_id,status_lama,status_baru,waktu,panitia:profiles!riwayat_panitia_panitia_id_fkey(nama)",
+      "id,karya_id,status_lama,status_baru,alasan_penolakan,waktu,panitia:profiles!riwayat_panitia_panitia_id_fkey(nama)",
     )
     .eq("karya_id", id)
     .order("waktu", { ascending: false });

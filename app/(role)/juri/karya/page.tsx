@@ -4,9 +4,10 @@ import { getJuriWorkflowData } from "@/lib/juri-workflow";
 
 export default async function JuriKaryaPage() {
   const juriAktif = await getJuriAktif();
-  const { items, workflow } = await getJuriWorkflowData(
+  const { items, workflow, statusHistoryByKarya } = await getJuriWorkflowData(
     juriAktif.kategori,
     "juri",
+    true,
   );
 
   return (
@@ -14,6 +15,7 @@ export default async function JuriKaryaPage() {
       kategori={juriAktif.kategori}
       items={items}
       role="juri"
+      historyByKarya={statusHistoryByKarya}
       workflow={workflow}
     />
   );

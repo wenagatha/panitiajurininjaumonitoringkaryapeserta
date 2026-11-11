@@ -22,6 +22,7 @@ export default async function JuriTinjauKaryaPage({
   return (
     <TinjauKarya
       item={data.item}
+      history={data.history}
       workflow={data.workflow}
       role="juri"
       readOnly={readOnlyFromWinners}

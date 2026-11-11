@@ -5,7 +5,6 @@ import { useMemo, useState } from "react";
 import AksiKandidatJuri from "@/components/kandidat/AksiKandidatJuri";
 import { useJuriAktif } from "@/components/juri/JuriAktifProvider";
 import { ATURAN_LOMBA } from "@/lib/aturan-lomba";
-import { formatTanggal } from "@/lib/format-tanggal";
 import type { JuriContoh } from "@/lib/juri-contoh";
 import { getStatusLabel, getStatusStyle } from "@/lib/status";
 import type {
@@ -134,19 +133,13 @@ function KandidatKategoriContent({
           rank,
         },
       ];
-    }).sort((first, second) => {
-      if (role === "juri" && first.rank && second.rank) {
-        return first.rank.peringkat - second.rank.peringkat;
-      }
-      if (role === "juri" && first.rank) {
-        return -1;
-      }
-      if (role === "juri" && second.rank) {
-        return 1;
-      }
-      return Date.parse(first.ditandaiPada) - Date.parse(second.ditandaiPada);
-    }).slice(0, aturan.batasKandidat);
-  }, [aturan.batasKandidat, itemByWorkId, role, workflow]);
+    })
+      .sort(
+        (first, second) =>
+          Date.parse(first.ditandaiPada) - Date.parse(second.ditandaiPada),
+      )
+      .slice(0, aturan.batasKandidat);
+  }, [aturan.batasKandidat, itemByWorkId, workflow]);
 
   const searchTerm = query.trim().toLocaleLowerCase("id-ID");
   const filteredCandidates = candidates.filter(
@@ -165,7 +158,12 @@ function KandidatKategoriContent({
     ]),
   );
   const history = workflow.history
-    .filter((entry) => itemByWorkId.has(entry.karyaId))
+    .filter(
+      (entry) =>
+        itemByWorkId.has(entry.karyaId) &&
+        (entry.jenis === "jadikan-kandidat" ||
+          entry.jenis === "batalkan-kandidat"),
+    )
     .sort((first, second) => Date.parse(second.waktu) - Date.parse(first.waktu))
     .slice(0, 10);
 
@@ -242,33 +240,9 @@ function KandidatKategoriContent({
         )}
 
         {role === "juri" && (
-          <>
-            <section className="mt-4 rounded-lg border border-[#e3eae6] bg-[#f9fbfa] p-3">
-              <h3 className="text-xs font-bold text-[#29463d]">
-                Peringkat saat ini
-              </h3>
-              <ol className="mt-2 grid gap-2 sm:grid-cols-2">
-                {Array.from(
-                  { length: aturan.jumlahPeringkat },
-                  (_, index) => index + 1,
-                ).map((rank) => (
-                  <li
-                    key={rank}
-                    className="flex items-center gap-2 rounded-md bg-white px-3 py-2 text-xs"
-                  >
-                    <span className="w-5 font-semibold tabular-nums text-[#64716c]">
-                      {rank}
-                    </span>
-                    <span className="text-[#52675f]">
-                      {slotByRank.get(rank) || "Kosong"}
-                    </span>
-                  </li>
-                ))}
-              </ol>
-            </section>
-            <details className="mt-4 rounded-lg border border-[#e3eae6] p-3">
+          <details className="mt-4 rounded-lg border border-[#e3eae6] p-3">
               <summary className="cursor-pointer text-xs font-bold text-[#29463d]">
-                Riwayat perubahan
+                Riwayat perubahan kandidat
               </summary>
               {history.length === 0 ? (
                 <p className="mt-3 text-xs text-[#84918b]">
@@ -295,8 +269,7 @@ function KandidatKategoriContent({
                   ))}
                 </ol>
               )}
-            </details>
-          </>
+          </details>
         )}
 
         {candidates.length === 0 ? (
@@ -351,16 +324,6 @@ function KandidatKategoriContent({
                             Pilihan Anda
                           </span>
                         )}
-                        {role === "juri" && rank && (
-                          <span className="rounded-full bg-[#fff4d8] px-2 py-0.5 text-[9px] font-semibold text-[#946914]">
-                            Peringkat {rank.peringkat}
-                          </span>
-                        )}
-                        {role === "panitia" && rank && (
-                          <span className="rounded-full bg-[#fff4d8] px-2 py-0.5 text-[9px] font-semibold text-[#946914]">
-                            Peringkat {rank.peringkat}
-                          </span>
-                        )}
                         {role === "panitia" && statusStyle && (
                           <span
                             className={`inline-flex rounded-full px-2 py-0.5 text-[9px] font-semibold ${statusStyle.badgeClass}`}
@@ -374,12 +337,6 @@ function KandidatKategoriContent({
                           </span>
                         )}
                       </span>
-                      {role === "juri" && rank && (
-                        <span className="mt-1 block text-[10px] text-[#84918b]">
-                          Ditetapkan oleh {rank.ditetapkanOlehNama} pada{" "}
-                          {formatTanggal(rank.ditetapkanPada.slice(0, 10))}
-                        </span>
-                      )}
                     </span>
                   </div>
                   {role === "juri" && juriAktif && (

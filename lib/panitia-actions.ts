@@ -8,6 +8,7 @@ export type PanitiaRiwayatStatus = {
   id: string;
   status_lama: StatusKarya;
   status_baru: StatusKarya;
+  alasan_penolakan: string | null;
   waktu: string;
   panitia: { nama: string };
 };
@@ -26,10 +27,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export async function updatePanitiaKaryaStatus(
   karyaId: string,
   status: StatusKarya,
+  alasanPenolakan?: string,
 ): Promise<{ history: PanitiaRiwayatStatus | null }> {
   const profile = await getStaffProfile();
   if (!profile || profile.role !== "panitia" || profile.must_change_password) {
     throw new Error("Sesi panitia tidak valid. Silakan masuk kembali.");
+  }
+  const normalizedReason = alasanPenolakan?.trim() ?? "";
+  if (
+    status === "ditolak" &&
+    (normalizedReason.length < 1 || normalizedReason.length > 1000)
+  ) {
+    throw new Error("Alasan penolakan wajib diisi (maksimal 1000 karakter).");
   }
 
   const supabase = await createClient();
@@ -37,6 +46,7 @@ export async function updatePanitiaKaryaStatus(
     .rpc("panitia_update_karya_status", {
       p_karya_id: karyaId,
       p_status: status,
+      p_alasan: status === "ditolak" ? normalizedReason : null,
     })
     .single();
 
@@ -54,7 +64,9 @@ export async function updatePanitiaKaryaStatus(
     typeof data.history_id !== "string" ||
     !isStatus(data.status_lama) ||
     !isStatus(data.status_baru) ||
-    typeof data.waktu !== "string"
+    typeof data.waktu !== "string" ||
+    (data.alasan_penolakan !== null &&
+      typeof data.alasan_penolakan !== "string")
   ) {
     throw new Error("Respons riwayat status dari Supabase tidak valid.");
   }
@@ -64,6 +76,7 @@ export async function updatePanitiaKaryaStatus(
       id: data.history_id,
       status_lama: data.status_lama,
       status_baru: data.status_baru,
+      alasan_penolakan: data.alasan_penolakan,
       waktu: data.waktu,
       panitia: { nama: profile.nama },
     },
