@@ -69,6 +69,9 @@ function TinjauKaryaContent({
     item.karya.status,
   );
   const [panitiaHistory, setPanitiaHistory] = useState(history);
+  const [openFilePreviews, setOpenFilePreviews] = useState<Set<string>>(
+    () => new Set(),
+  );
   const status =
     role === "panitia"
       ? panitiaStatus
@@ -475,32 +478,47 @@ function TinjauKaryaContent({
               </p>
             )}
             <div className="mt-3 space-y-2">
-              {visibleFiles.map((file, index) => (
+              {visibleFiles.map((file) => (
                 <details
                   key={`${file.jenis}-${file.href}`}
-                  open={index === 0}
                   className="overflow-hidden rounded-lg border border-[#d6e0da]"
+                  onToggle={(event) => {
+                    const fileKey = `${file.jenis}-${file.href}`;
+                    const isOpen = event.currentTarget.open;
+                    setOpenFilePreviews((current) => {
+                      const next = new Set(current);
+                      if (isOpen) {
+                        next.add(fileKey);
+                      } else {
+                        next.delete(fileKey);
+                      }
+                      return next;
+                    });
+                  }}
                 >
                   <summary className="cursor-pointer px-3 py-3 text-xs font-semibold text-[#345248]">
                     {file.label}
                   </summary>
-                  <div className="border-t border-[#e8eeea] p-3">
-                    <div className="mb-2 text-right">
-                      <a
-                        href={file.href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs font-semibold text-[#3d7563] underline"
-                      >
-                        Buka PDF di tab baru
-                      </a>
+                  {openFilePreviews.has(`${file.jenis}-${file.href}`) && (
+                    <div className="border-t border-[#e8eeea] p-3">
+                      <div className="mb-2 text-right">
+                        <a
+                          href={file.href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs font-semibold text-[#3d7563] underline"
+                        >
+                          Buka PDF di tab baru
+                        </a>
+                      </div>
+                      <iframe
+                        title={file.label}
+                        src={file.href}
+                        loading="lazy"
+                        className="h-[min(75vh,760px)] w-full rounded-md border border-[#e8eeea] bg-[#f7f8f7]"
+                      />
                     </div>
-                    <iframe
-                      title={file.label}
-                      src={file.href}
-                      className="h-[min(75vh,760px)] w-full rounded-md border border-[#e8eeea] bg-[#f7f8f7]"
-                    />
-                  </div>
+                  )}
                 </details>
               ))}
             </div>
