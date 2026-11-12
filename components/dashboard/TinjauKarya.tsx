@@ -577,45 +577,54 @@ function TinjauKaryaContent({
 
           {(role === "panitia" || history.length > 0) && (
             <section className="mt-5 border-t border-[#e8eeea] pt-5">
-              <h2 className="text-sm font-bold text-[#29463d]">
-                Riwayat perubahan status
-              </h2>
-              {panitiaHistory.length === 0 ? (
-                <p className="mt-2 text-xs text-[#84918b]">
-                  Belum ada perubahan status yang tercatat.
-                </p>
-              ) : (
-                <ol className="mt-3 space-y-2">
-                  {panitiaHistory.map((entry) => (
-                    <li
-                      key={entry.id}
-                      className="rounded-md bg-[#f7faf8] px-3 py-2 text-xs text-[#52766a]"
-                    >
-                      <span className="font-semibold">{entry.panitia.nama}</span>{" "}
-                      mengubah status dari{" "}
-                      <span className="font-semibold">
-                        {getStatusLabel(entry.status_lama)}
-                      </span>{" "}
-                      menjadi{" "}
-                      <span className="font-semibold">
-                        {getStatusLabel(entry.status_baru)}
-                      </span>
-                      {entry.status_baru === "ditolak" &&
-                        entry.alasan_penolakan && (
-                          <p className="mt-1">
-                            Alasan: {entry.alasan_penolakan}
-                          </p>
-                        )}
-                      <time
-                        className="mt-1 block text-[11px] text-[#84918b]"
-                        dateTime={entry.waktu}
-                      >
-                        {formatWaktu(entry.waktu)}
-                      </time>
-                    </li>
-                  ))}
-                </ol>
-              )}
+              <details className="overflow-hidden rounded-lg border border-[#d6e0da]">
+                <summary className="cursor-pointer px-3 py-3 text-sm font-bold text-[#29463d]">
+                  Riwayat perubahan status
+                  <span className="ml-2 text-xs font-medium text-[#84918b]">
+                    ({panitiaHistory.length})
+                  </span>
+                </summary>
+                <div className="max-h-80 overflow-y-auto overscroll-contain border-t border-[#e8eeea] p-3">
+                  {panitiaHistory.length === 0 ? (
+                    <p className="text-xs text-[#84918b]">
+                      Belum ada perubahan status yang tercatat.
+                    </p>
+                  ) : (
+                    <ol className="space-y-2">
+                      {panitiaHistory.map((entry) => (
+                        <li
+                          key={entry.id}
+                          className="rounded-md bg-[#f7faf8] px-3 py-2 text-xs text-[#52766a]"
+                        >
+                          <span className="font-semibold">
+                            {entry.panitia.nama}
+                          </span>{" "}
+                          mengubah status dari{" "}
+                          <span className="font-semibold">
+                            {getStatusLabel(entry.status_lama)}
+                          </span>{" "}
+                          menjadi{" "}
+                          <span className="font-semibold">
+                            {getStatusLabel(entry.status_baru)}
+                          </span>
+                          {entry.status_baru === "ditolak" &&
+                            entry.alasan_penolakan && (
+                              <p className="mt-1">
+                                Alasan: {entry.alasan_penolakan}
+                              </p>
+                            )}
+                          <time
+                            className="mt-1 block text-[11px] text-[#84918b]"
+                            dateTime={entry.waktu}
+                          >
+                            {formatWaktu(entry.waktu)}
+                          </time>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
+              </details>
             </section>
           )}
 
