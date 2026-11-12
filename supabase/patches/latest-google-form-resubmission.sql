@@ -9,7 +9,7 @@ declare
   existing_participant_id uuid;
   existing_submitted_at timestamptz;
   processed_count integer := 0;
-  submitted_at timestamptz;
+  v_submitted_at timestamptz;
 begin
   if exists (
     select 1
@@ -92,7 +92,7 @@ begin
     where submission_rank = 1
     order by submitted_at desc nulls last, id desc
   loop
-    submitted_at := submission.submitted_at;
+    v_submitted_at := submission.submitted_at;
 
     select
       participant.id,
@@ -134,7 +134,7 @@ begin
         trim(submission.email),
         trim(submission.whatsapp),
         submission.kategori,
-        coalesce(submitted_at::date, current_date),
+        coalesce(v_submitted_at::date, current_date),
         nullif(trim(submission.url_kartu), '')
       )
       returning id into existing_participant_id;
@@ -146,7 +146,7 @@ begin
         nullif(trim(submission.url_pernyataan), '')
       );
       processed_count := processed_count + 1;
-    elsif submitted_at > existing_submitted_at
+    elsif v_submitted_at > existing_submitted_at
       or existing_submitted_at is null
     then
       update public.peserta
@@ -155,7 +155,7 @@ begin
           asal = trim(submission.asal),
           email = trim(submission.email),
           whatsapp = trim(submission.whatsapp),
-          tanggal_daftar = coalesce(submitted_at::date, current_date),
+          tanggal_daftar = coalesce(v_submitted_at::date, current_date),
           url_kartu = nullif(trim(submission.url_kartu), '')
       where id = existing_participant_id;
 
