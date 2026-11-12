@@ -59,6 +59,10 @@ export default function AccountSetupForm({
           Masukkan nama yang akan tercatat pada aktivitas peninjauan dan buat
           kata sandi pribadi sebelum masuk ke dashboard.
         </p>
+        <p className="mt-2 text-sm leading-5 text-red-700">
+          Catat dan simpan kata sandi baru Anda di tempat yang aman, misalnya
+          notebook pribadi. Saat ini belum tersedia fitur lupa kata sandi.
+        </p>
 
         <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
           <div>
