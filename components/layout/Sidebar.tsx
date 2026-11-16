@@ -40,7 +40,7 @@ const ROLE_MENUS: ReadonlyArray<{ role: Role; groups: MenuGroup[] }> = [
             icon: "people",
             subItems: [
               {
-                label: "Lomba Cerita HAM",
+                label: "Lomba Buku Cerita HAM",
                 href: "/panitia/peserta/cerita",
                 category: "cerita",
               },
