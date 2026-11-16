@@ -16,7 +16,7 @@ function Brand({ light = false }: { light?: boolean }) {
           light ? "text-white" : "text-[#17483f]"
         }`}
       >
-        Kementerian Hukum dan HAM RI
+        Kementerian HAM RI
       </span>
     </div>
   );
