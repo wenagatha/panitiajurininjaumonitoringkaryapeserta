@@ -94,13 +94,13 @@ export default function LoginPage() {
             <Brand light />
             <div className="mt-8 lg:mt-10 xl:mt-[38px]">
               <p className="text-xs font-bold tracking-[0.16em] text-[#ffe064] lg:text-sm">
-                RUANG KOLABORASI
+                
               </p>
               <h1 className="mt-4 max-w-[520px] text-[28px] font-bold leading-[1.24] tracking-[-0.035em] lg:mt-5 lg:text-[clamp(2.5rem,4vw,3.2rem)] lg:leading-[1.14]">
                 Monitoring Lomba, Penilaian, dan Karya Peserta.
               </h1>
               <p className="mt-5 max-w-[480px] text-[15px] leading-6 text-white/80 lg:mt-6 lg:text-lg lg:leading-7 lg:text-white/75">
-                Halaman ini hanya dapat diakses oleh panitia dan juri
+                
               </p>
             </div>
           </div>

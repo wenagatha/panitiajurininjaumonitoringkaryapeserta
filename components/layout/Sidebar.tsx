@@ -45,7 +45,7 @@ const ROLE_MENUS: ReadonlyArray<{ role: Role; groups: MenuGroup[] }> = [
                 category: "cerita",
               },
               {
-                label: "Lomba Komik Bergambar",
+                label: "Lomba Serial Komik Bergambar",
                 href: "/panitia/peserta/komik",
                 category: "komik",
               },
@@ -62,7 +62,7 @@ const ROLE_MENUS: ReadonlyArray<{ role: Role; groups: MenuGroup[] }> = [
                 category: "cerita",
               },
               {
-                label: "Lomba Komik Bergambar",
+                label: "Lomba Serial Komik Bergambar",
                 href: "/panitia/karya/komik",
                 category: "komik",
               },
