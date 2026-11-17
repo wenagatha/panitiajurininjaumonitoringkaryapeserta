@@ -2,7 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { updatePanitiaKaryaStatus } from "@/lib/panitia-actions";
+import {
+  getPanitiaKaryaStatusHistory,
+  updatePanitiaKaryaStatus,
+  type PanitiaRiwayatStatus,
+} from "@/lib/panitia-actions";
 import { getStatusLabel, getStatusStyle, STATUS_KARYA } from "@/lib/status";
 import { normalisasiWhatsApp } from "@/lib/normalisasi-whatsapp";
 import type { StatusKarya } from "@/types/karya";
@@ -17,6 +21,16 @@ function formatTanggal(tanggal: string): string {
     "Jul", "Agu", "Sep", "Okt", "Nov", "Des",
   ];
   return `${date.getDate()} ${bulan[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+function formatWaktu(waktu: string): string {
+  return new Intl.DateTimeFormat("id-ID", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(waktu));
 }
 
 function labelLomba(kategori: PesertaKategoriRow["kategori"]): string {
@@ -41,6 +55,14 @@ export default function TabelPesertaKategori({
   );
   const [rejectionReason, setRejectionReason] = useState("");
   const [statusError, setStatusError] = useState("");
+  const [historyByKarya, setHistoryByKarya] = useState<
+    Record<string, PanitiaRiwayatStatus[]>
+  >({});
+  const [historyOpenId, setHistoryOpenId] = useState<string | null>(null);
+  const [loadingHistoryId, setLoadingHistoryId] = useState<string | null>(null);
+  const [historyErrors, setHistoryErrors] = useState<Record<string, string>>(
+    {},
+  );
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
 
@@ -103,6 +125,7 @@ export default function TabelPesertaKategori({
         setPendingRejectionId(null);
         setRejectionReason("");
         setStatusError("");
+        setHistoryOpenId(null);
         rowRefs.current.get(selectedId)?.focus();
       }
     };
@@ -120,6 +143,38 @@ export default function TabelPesertaKategori({
       setPendingRejectionId(null);
       setRejectionReason("");
       setStatusError("");
+      setHistoryOpenId(null);
+    }
+  }
+
+  async function toggleHistory(karyaId: string) {
+    if (historyOpenId === karyaId) {
+      setHistoryOpenId(null);
+      return;
+    }
+
+    setHistoryOpenId(karyaId);
+    setHistoryErrors((current) => ({ ...current, [karyaId]: "" }));
+    if (loadingHistoryId === karyaId) {
+      return;
+    }
+
+    setLoadingHistoryId(karyaId);
+    try {
+      const history = await getPanitiaKaryaStatusHistory(karyaId);
+      setHistoryByKarya((current) => ({ ...current, [karyaId]: history }));
+    } catch (cause) {
+      setHistoryErrors((current) => ({
+        ...current,
+        [karyaId]:
+          cause instanceof Error
+            ? cause.message
+            : "Riwayat perubahan status gagal dimuat.",
+      }));
+    } finally {
+      setLoadingHistoryId((current) =>
+        current === karyaId ? null : current,
+      );
     }
   }
 
@@ -131,7 +186,25 @@ export default function TabelPesertaKategori({
     setStatusError("");
     setSavingKaryaId(karyaId);
     try {
-      await updatePanitiaKaryaStatus(karyaId, status, reason);
+      const { history } = await updatePanitiaKaryaStatus(
+        karyaId,
+        status,
+        reason,
+      );
+      if (history) {
+        setHistoryByKarya((current) => {
+          if (!Object.prototype.hasOwnProperty.call(current, karyaId)) {
+            return current;
+          }
+          return {
+            ...current,
+            [karyaId]: [
+              history,
+              ...current[karyaId].filter((entry) => entry.id !== history.id),
+            ],
+          };
+        });
+      }
       setPendingRejectionId(null);
       setRejectionReason("");
       router.refresh();
@@ -438,6 +511,17 @@ export default function TabelPesertaKategori({
                       Menyimpan...
                     </span>
                   )}
+                  <button
+                    type="button"
+                    aria-expanded={historyOpenId === selectedRow.karya.id}
+                    aria-controls={`participant-status-history-${selectedRow.karya.id}`}
+                    onClick={() => void toggleHistory(selectedRow.karya.id)}
+                    className="mt-2 rounded-md border border-[#d6e0da] px-3 py-1.5 text-xs font-semibold text-[#345248] hover:bg-[#f5faf7]"
+                  >
+                    {historyOpenId === selectedRow.karya.id
+                      ? "Sembunyikan riwayat"
+                      : "Lihat riwayat status"}
+                  </button>
                 </dd>
                 {pendingRejectionId === selectedRow.karya.id && (
                   <div className="mt-3 rounded-lg border border-[#f1c7ce] bg-[#fff7f8] p-3">
@@ -498,6 +582,59 @@ export default function TabelPesertaKategori({
                 )}
               </div>
             </dl>
+
+            {historyOpenId === selectedRow.karya.id && (
+              <section
+                id={`participant-status-history-${selectedRow.karya.id}`}
+                aria-label="Riwayat perubahan status"
+                className="mt-4 rounded-lg border border-[#dce5e0] bg-[#f8fbf9] p-3"
+              >
+                <h3 className="text-sm font-bold text-[#29463d]">
+                  Riwayat status
+                </h3>
+                {loadingHistoryId === selectedRow.karya.id ? (
+                  <p role="status" className="mt-2 text-xs text-[#84918b]">
+                    Memuat riwayat...
+                  </p>
+                ) : historyErrors[selectedRow.karya.id] ? (
+                  <p role="alert" className="mt-2 text-xs text-[#a33340]">
+                    {historyErrors[selectedRow.karya.id]}
+                  </p>
+                ) : historyByKarya[selectedRow.karya.id]?.length ? (
+                  <ol className="mt-3 space-y-3">
+                    {historyByKarya[selectedRow.karya.id].map((entry) => (
+                      <li
+                        key={entry.id}
+                        className="border-l-2 border-[#b8d4c4] pl-3"
+                      >
+                        <p className="text-xs font-medium text-[#345248]">
+                          {getStatusLabel(entry.status_lama)} →{" "}
+                          {getStatusLabel(entry.status_baru)}
+                        </p>
+                        <p className="mt-1 text-xs text-[#63716b]">
+                          Oleh {entry.panitia.nama}
+                        </p>
+                        <time
+                          dateTime={entry.waktu}
+                          className="mt-1 block text-[11px] text-[#84918b]"
+                        >
+                          {formatWaktu(entry.waktu)}
+                        </time>
+                        {entry.alasan_penolakan && (
+                          <p className="mt-1 text-xs text-[#8b3443]">
+                            Alasan: {entry.alasan_penolakan}
+                          </p>
+                        )}
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <p className="mt-2 text-xs text-[#84918b]">
+                    Belum ada riwayat perubahan status.
+                  </p>
+                )}
+              </section>
+            )}
 
             <section className="mt-5">
               <h3 className="text-sm font-bold text-[#29463d]">Kontak</h3>

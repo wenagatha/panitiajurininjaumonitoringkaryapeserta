@@ -73,8 +73,8 @@ export default function TabelPeserta({
           className="h-10 rounded-lg border border-[#dfe6e2] bg-white px-3 text-xs text-[#42564e] outline-none focus:border-[#6b9b86] focus:ring-2 focus:ring-[#6b9b86]/15 sm:w-[170px]"
         >
           <option value="semua">Semua lomba</option>
-          <option value="cerita">Lomba Cerita</option>
-          <option value="komik">Lomba Komik</option>
+          <option value="cerita">Buku Cerita HAM</option>
+          <option value="komik">Serial Komik Bergambar</option>
         </select>
       </div>
       <div className="mt-4 overflow-x-auto">
@@ -101,7 +101,9 @@ export default function TabelPeserta({
                     <p className="mt-0.5 text-[10px] text-[#89958f]">{row.asal}</p>
                   </td>
                   <td className="px-2 py-3 text-xs text-[#63716b]">
-                    {row.kategori === "cerita" ? "Cerita" : "Komik"}
+                    {row.kategori === "cerita"
+                      ? "Buku Cerita HAM"
+                      : "Serial Komik Bergambar"}
                   </td>
                   <td className="px-2 py-3 text-xs text-[#63716b]">
                     {formatTanggal(row.tanggalDaftar)}

@@ -27,11 +27,11 @@ export default function ChartPendaftaran({
     <section className="min-h-[360px] rounded-xl border border-[#dce5e0] border-t-[3px] border-t-[#18a394] bg-white p-5 shadow-[0_2px_8px_rgba(27,61,49,0.035)] sm:p-6">
       <h2 className="text-sm font-bold text-[#29463d]">Peserta per lomba</h2>
       <p className="mt-1 text-xs text-[#8a9691]">
-        Total peserta yang daftar Lomba Cerita dan Lomba Komik
+        Total peserta yang daftar Lomba Buku Cerita HAM dan Lomba Serial Komik Bergambar
       </p>
       <div
         role="img"
-        aria-label={`Peserta per lomba: ${cerita} peserta Lomba Cerita, ${komik} peserta Lomba Komik`}
+        aria-label={`Peserta per lomba: ${cerita} peserta Lomba Buku Cerita HAM, ${komik} peserta Lomba Serial Komik Bergambar`}
         className="mx-auto mt-5 flex h-[250px] max-w-[400px] items-end justify-center gap-12 border-b border-[#edf0ee] px-6"
       >
         {BARS.map((bar) => {

@@ -82,3 +82,57 @@ export async function updatePanitiaKaryaStatus(
     },
   };
 }
+
+export async function getPanitiaKaryaStatusHistory(
+  karyaId: string,
+): Promise<PanitiaRiwayatStatus[]> {
+  const profile = await getStaffProfile();
+  if (!profile || profile.role !== "panitia" || profile.must_change_password) {
+    throw new Error("Sesi panitia tidak valid. Silakan masuk kembali.");
+  }
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      karyaId,
+    )
+  ) {
+    throw new Error("ID karya tidak valid.");
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("riwayat_panitia")
+    .select(
+      "id,status_lama,status_baru,alasan_penolakan,waktu,panitia:profiles!riwayat_panitia_panitia_id_fkey(nama)",
+    )
+    .eq("karya_id", karyaId)
+    .order("waktu", { ascending: false });
+
+  if (error) {
+    throw new Error(`Riwayat perubahan status gagal dimuat: ${error.message}`);
+  }
+
+  return (data ?? []).map((value) => {
+    if (
+      !isRecord(value) ||
+      !isRecord(value.panitia) ||
+      typeof value.id !== "string" ||
+      !isStatus(value.status_lama) ||
+      !isStatus(value.status_baru) ||
+      (value.alasan_penolakan !== null &&
+        typeof value.alasan_penolakan !== "string") ||
+      typeof value.waktu !== "string" ||
+      typeof value.panitia.nama !== "string"
+    ) {
+      throw new Error("Format riwayat status Supabase tidak valid.");
+    }
+
+    return {
+      id: value.id,
+      status_lama: value.status_lama,
+      status_baru: value.status_baru,
+      alasan_penolakan: value.alasan_penolakan,
+      waktu: value.waktu,
+      panitia: { nama: value.panitia.nama },
+    };
+  });
+}
