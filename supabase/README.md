@@ -82,7 +82,15 @@ Sebelum juri mulai menggunakannya:
    mengganti, dan mengosongkan peringkat. Fungsi memeriksa identitas akun,
    kategori, status karya, kuota, dan kelayakan aksi; perubahan kandidat dan
    peringkat dicatat di `riwayat_juri`.
-3. Pastikan karya yang ingin dinilai berstatus `diverifikasi`. Karya yang belum
+3. Jalankan isi `patches/official-juri-roster.sql` satu kali. Patch ini
+   membatasi daftar juri ke akun resmi `juri1` dan `juri2` untuk kategori
+   masing-masing, sehingga profil developer atau profil juri lain tidak ikut
+   ditampilkan.
+4. Jalankan isi `patches/juri-review-status-history.sql` satu kali. Patch ini
+   menyediakan perubahan status tinjauan pribadi dari sidebar dan mencatat
+   riwayat setiap transisi status. Juri hanya dapat mengubah status miliknya
+   sendiri.
+5. Pastikan karya yang ingin dinilai berstatus `diverifikasi`. Karya yang belum
    diverifikasi tidak ditampilkan kepada juri.
 
 Pilihan kandidat setiap juri tetap terpisah. Peringkat merupakan keputusan

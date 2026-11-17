@@ -74,7 +74,14 @@ function TinjauKaryaContent({
   );
   const [panitiaHistory, setPanitiaHistory] = useState(history);
   const [openFilePreviews, setOpenFilePreviews] = useState<Set<string>>(
-    () => new Set(),
+    () =>
+      role === "juri" && !readOnly
+        ? new Set(
+            item.berkas
+              .filter((file) => file.jenis === "karya")
+              .map((file) => `${file.jenis}-${file.href}`),
+          )
+        : new Set(),
   );
   const status =
     role === "panitia"
@@ -91,6 +98,7 @@ function TinjauKaryaContent({
     ranks: [],
     history: [],
     reviews: [],
+    reviewHistory: [],
   };
   const [trackingError, setTrackingError] = useState("");
   const [actionError, setActionError] = useState("");
@@ -484,49 +492,52 @@ function TinjauKaryaContent({
               </p>
             )}
             <div className="mt-3 space-y-2">
-              {visibleFiles.map((file) => (
-                <details
-                  key={`${file.jenis}-${file.href}`}
-                  className="overflow-hidden rounded-lg border border-[#d6e0da]"
-                  onToggle={(event) => {
-                    const fileKey = `${file.jenis}-${file.href}`;
-                    const isOpen = event.currentTarget.open;
-                    setOpenFilePreviews((current) => {
-                      const next = new Set(current);
-                      if (isOpen) {
-                        next.add(fileKey);
-                      } else {
-                        next.delete(fileKey);
-                      }
-                      return next;
-                    });
-                  }}
-                >
-                  <summary className="cursor-pointer px-3 py-3 text-xs font-semibold text-[#345248]">
-                    {file.label}
-                  </summary>
-                  {openFilePreviews.has(`${file.jenis}-${file.href}`) && (
-                    <div className="border-t border-[#e8eeea] p-3">
-                      <div className="mb-2 text-right">
-                        <a
-                          href={file.href}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs font-semibold text-[#3d7563] underline"
-                        >
-                          Buka PDF di tab baru
-                        </a>
+              {visibleFiles.map((file) => {
+                const fileKey = `${file.jenis}-${file.href}`;
+                return (
+                  <details
+                    key={fileKey}
+                    open={openFilePreviews.has(fileKey)}
+                    className="overflow-hidden rounded-lg border border-[#d6e0da]"
+                    onToggle={(event) => {
+                      const isOpen = event.currentTarget.open;
+                      setOpenFilePreviews((current) => {
+                        const next = new Set(current);
+                        if (isOpen) {
+                          next.add(fileKey);
+                        } else {
+                          next.delete(fileKey);
+                        }
+                        return next;
+                      });
+                    }}
+                  >
+                    <summary className="cursor-pointer px-3 py-3 text-xs font-semibold text-[#345248]">
+                      {file.label}
+                    </summary>
+                    {openFilePreviews.has(fileKey) && (
+                      <div className="border-t border-[#e8eeea] p-3">
+                        <div className="mb-2 text-right">
+                          <a
+                            href={file.href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs font-semibold text-[#3d7563] underline"
+                          >
+                            Buka PDF di tab baru
+                          </a>
+                        </div>
+                        <iframe
+                          title={file.label}
+                          src={file.href}
+                          loading="lazy"
+                          className="h-[min(75vh,760px)] w-full rounded-md border border-[#e8eeea] bg-[#f7f8f7]"
+                        />
                       </div>
-                      <iframe
-                        title={file.label}
-                        src={file.href}
-                        loading="lazy"
-                        className="h-[min(75vh,760px)] w-full rounded-md border border-[#e8eeea] bg-[#f7f8f7]"
-                      />
-                    </div>
-                  )}
-                </details>
-              ))}
+                    )}
+                  </details>
+                );
+              })}
             </div>
           </div>
 
@@ -604,8 +615,7 @@ function TinjauKaryaContent({
             </div>
           )}
 
-          {(role === "panitia" || history.length > 0) && (
-            <section className="mt-5 border-t border-[#e8eeea] pt-5">
+          <section className="mt-5 border-t border-[#e8eeea] pt-5">
               <details className="overflow-hidden rounded-lg border border-[#d6e0da]">
                 <summary className="cursor-pointer px-3 py-3 text-sm font-bold text-[#29463d]">
                   Riwayat perubahan status
@@ -654,8 +664,7 @@ function TinjauKaryaContent({
                   )}
                 </div>
               </details>
-            </section>
-          )}
+          </section>
 
           {role === "panitia" && status === "diverifikasi" && (
             <section className="mt-5 border-t border-[#e8eeea] pt-5">

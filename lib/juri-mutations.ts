@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import type { JuriReviewStatus } from "@/types/karya";
 
 type ReviewAction =
   | "start"
@@ -12,6 +13,7 @@ type ReviewAction =
 async function callRpc(
   name:
     | "juri_review_action"
+    | "juri_set_review_status"
     | "juri_toggle_candidate"
     | "juri_set_rank"
     | "juri_clear_rank",
@@ -31,6 +33,16 @@ export async function saveJuriReview(
   await callRpc("juri_review_action", {
     p_karya_id: karyaId,
     p_action: action,
+  });
+}
+
+export async function setJuriReviewStatus(
+  karyaId: string,
+  status: JuriReviewStatus,
+): Promise<void> {
+  await callRpc("juri_set_review_status", {
+    p_karya_id: karyaId,
+    p_status: status,
   });
 }
 

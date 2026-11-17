@@ -2,6 +2,8 @@ export type KategoriLomba = "cerita" | "komik";
 
 export type StatusKarya = "menunggu" | "diproses" | "diverifikasi" | "ditolak";
 
+export type JuriReviewStatus = "belum" | "sedang" | "sudah";
+
 export type Peserta = {
   id: string;
   nama: string;

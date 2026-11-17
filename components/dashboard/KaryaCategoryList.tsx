@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -15,10 +16,14 @@ import {
 import { ATURAN_LOMBA, HEARTBEAT_DETIK } from "@/lib/aturan-lomba";
 import { useJuriAktif } from "@/components/juri/JuriAktifProvider";
 import { useDetakWaktu } from "@/lib/use-detak-waktu";
+import {
+  setJuriReviewStatus,
+} from "@/lib/juri-mutations";
 import type { JuriWorkflowSnapshot } from "@/lib/juri-workflow";
 import type {
   Karya,
   KategoriLomba,
+  JuriReviewStatus,
   Peserta,
   StatusKarya,
 } from "@/types/karya";
@@ -76,6 +81,15 @@ function formatWaktu(waktu: string): string {
     timeStyle: "short",
     timeZone: "Asia/Jakarta",
   }).format(new Date(waktu));
+}
+
+function getJuriReviewStatusLabel(status: JuriReviewStatus): string {
+  const labels: Record<JuriReviewStatus, string> = {
+    belum: "Belum ditinjau",
+    sedang: "Sedang ditinjau",
+    sudah: "Sudah ditinjau",
+  };
+  return labels[status];
 }
 
 export default function KaryaCategoryList({
@@ -144,6 +158,7 @@ function KaryaCategoryListContent({
     ranks: [],
     history: [],
     reviews: [],
+    reviewHistory: [],
   };
   const [panitiaStatuses, setPanitiaStatuses] = useState<
     Record<string, StatusKarya>
@@ -155,13 +170,20 @@ function KaryaCategoryListContent({
   const [pendingRejectionId, setPendingRejectionId] = useState<string | null>(
     null,
   );
+  const [statusPanelKaryaId, setStatusPanelKaryaId] = useState<string | null>(
+    null,
+  );
+  const [savingReviewStatusId, setSavingReviewStatusId] = useState<
+    string | null
+  >(null);
+  const [reviewStatusError, setReviewStatusError] = useState("");
   const [rejectionReason, setRejectionReason] = useState("");
   const [query, setQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<"semua" | StatusKarya>(
     "semua",
   );
   const [filterTinjauan, setFilterTinjauan] = useState<
-    "semua" | "belum" | "sudah"
+    "semua" | "belum" | "sedang" | "sudah"
   >("semua");
 
   useEffect(() => {
@@ -197,9 +219,7 @@ function KaryaCategoryListContent({
     const matchesJuriReview =
       role !== "juri" ||
       filterTinjauan === "semua" ||
-      (filterTinjauan === "sudah"
-        ? reviewStatus === "sudah"
-        : reviewStatus !== "sudah");
+      reviewStatus === filterTinjauan;
     return (
       matchesSearch &&
       matchesJuriReview &&
@@ -223,7 +243,10 @@ function KaryaCategoryListContent({
     return result;
   }, [roleItems, statuses]);
 
-  function getReviewStatus(workId: string, judgeId: string) {
+  function getReviewStatus(
+    workId: string,
+    judgeId: string,
+  ): "belum" | "sedang" | "sudah" {
     const review = workflowData.reviews.find(
       (entry) => entry.karyaId === workId && entry.juriId === judgeId,
     );
@@ -261,6 +284,26 @@ function KaryaCategoryListContent({
     }
   }
 
+  async function saveReviewStatus(karyaId: string, status: JuriReviewStatus) {
+    if (!juriAktif) {
+      return;
+    }
+    setReviewStatusError("");
+    setSavingReviewStatusId(karyaId);
+    try {
+      await setJuriReviewStatus(karyaId, status);
+      router.refresh();
+    } catch (cause) {
+      setReviewStatusError(
+        cause instanceof Error
+          ? cause.message
+          : "Status tinjauan gagal disimpan.",
+      );
+    } finally {
+      setSavingReviewStatusId(null);
+    }
+  }
+
   async function openReview(item: KaryaDaftarItem) {
     if (role === "juri") {
       router.push(`/juri/karya/${item.karya.id}`);
@@ -289,17 +332,13 @@ function KaryaCategoryListContent({
       if (work.status !== "diverifikasi") {
         return result;
       }
-      if (
-        juriAktif &&
-        getReviewStatus(work.id, juriAktif.id) === "sudah"
-      ) {
-        result.sudah += 1;
-      } else {
-        result.belum += 1;
-      }
+      const reviewStatus = juriAktif
+        ? getReviewStatus(work.id, juriAktif.id)
+        : "belum";
+      result[reviewStatus] += 1;
       return result;
     },
-    { belum: 0, sudah: 0 },
+    { belum: 0, sedang: 0, sudah: 0 },
   );
   const kategoriJuri = juriAktif?.kategori ?? kategori;
   const candidateCount =
@@ -314,6 +353,7 @@ function KaryaCategoryListContent({
       ? [
           { key: "total", label: "Total karya", value: counts.total, color: "#00a477" },
           { key: "belum", label: "Belum saya tinjau", value: juriReviewCounts.belum, color: "#5596e8" },
+          { key: "sedang", label: "Sedang ditinjau", value: juriReviewCounts.sedang, color: "#f0a000" },
           { key: "sudah", label: "Sudah saya tinjau", value: juriReviewCounts.sudah, color: "#00a477" },
           {
             key: "kandidat",
@@ -352,7 +392,7 @@ function KaryaCategoryListContent({
         </p>
       )}
 
-      <div className={`mb-4 grid grid-cols-2 gap-3 ${role === "juri" ? "sm:grid-cols-4" : "sm:grid-cols-3 xl:grid-cols-4"}`}>
+      <div className={`mb-4 grid grid-cols-2 gap-3 ${role === "juri" ? "sm:grid-cols-3 xl:grid-cols-5" : "sm:grid-cols-3 xl:grid-cols-4"}`}>
         {statusCards.map((card) => (
           <div
             key={card.key}
@@ -425,12 +465,19 @@ function KaryaCategoryListContent({
               aria-label="Filter status tinjauan saya"
               value={filterTinjauan}
               onChange={(event) =>
-                setFilterTinjauan(event.target.value as "semua" | "belum" | "sudah")
+                setFilterTinjauan(
+                  event.target.value as
+                    | "semua"
+                    | "belum"
+                    | "sedang"
+                    | "sudah",
+                )
               }
               className="h-10 rounded-lg border border-[#dfe6e2] bg-white px-3 text-xs text-[#42564e] outline-none focus:border-[#6b9b86] focus:ring-2 focus:ring-[#6b9b86]/15"
             >
               <option value="semua">Semua</option>
               <option value="belum">Belum saya tinjau</option>
+              <option value="sedang">Sedang ditinjau</option>
               <option value="sudah">Sudah saya tinjau</option>
             </select>
           )}
@@ -463,6 +510,10 @@ function KaryaCategoryListContent({
               (juri) => juri.id !== juriAktif?.id,
             );
             const rank = rankByWorkId.get(item.karya.id);
+            const reviewStatus =
+              role === "juri" && juriAktif
+                ? getReviewStatus(item.karya.id, juriAktif.id)
+                : "belum";
             const visibleFiles =
               role === "juri"
                 ? item.berkas.filter((file) => file.jenis === "karya")
@@ -479,13 +530,39 @@ function KaryaCategoryListContent({
                       {labelKarya}
                     </span>
                     <div className="flex items-center gap-2">
-                      {role === "juri" && (
-                        <span
-                          className={`inline-flex w-fit rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyle?.badgeClass ?? ""}`}
-                        >
-                          {getStatusLabel(status)}
-                        </span>
-                      )}
+                      {role === "juri" &&
+                        (status === "diverifikasi" ? (
+                          <button
+                            type="button"
+                            aria-haspopup="dialog"
+                            aria-expanded={statusPanelKaryaId === item.karya.id}
+                            aria-controls="jury-review-status-panel"
+                            aria-label={`Buka status tinjauan untuk ${item.peserta.nama}`}
+                            onClick={() => {
+                              setReviewStatusError("");
+                              setStatusPanelKaryaId(item.karya.id);
+                            }}
+                            className={`inline-flex w-fit rounded-full px-2.5 py-1 text-xs font-semibold ${
+                              reviewStatus === "sudah"
+                                ? "bg-[#dcf6e8] text-[#1f6746]"
+                                : reviewStatus === "sedang"
+                                  ? "bg-[#fff4d8] text-[#946914]"
+                                  : "bg-[#e4f1ff] text-[#245b8d]"
+                            }`}
+                          >
+                            {reviewStatus === "sudah"
+                              ? "Sudah saya tinjau"
+                              : reviewStatus === "sedang"
+                                ? "Sedang ditinjau"
+                                : "Belum saya tinjau"}
+                          </button>
+                        ) : (
+                          <span
+                            className={`inline-flex w-fit rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyle?.badgeClass ?? ""}`}
+                          >
+                            {getStatusLabel(status)}
+                          </span>
+                        ))}
                       {status === "diverifikasi" &&
                         role === "panitia" &&
                         candidateJudges.length > 0 && (
@@ -570,13 +647,7 @@ function KaryaCategoryListContent({
                             Lihat alasan
                           </button>
                         ) : (
-                          <button
-                            type="button"
-                            onClick={() => void openReview(item)}
-                            className="rounded-lg bg-[#245c4f] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#19483e]"
-                          >
-                            Tinjau
-                          </button>
+                          null
                         )
                       )}
                     </div>
@@ -724,21 +795,39 @@ function KaryaCategoryListContent({
                     Berkas peserta
                   </h3>
                   <ul className="mt-2 grid gap-2 lg:grid-cols-3">
-                    {visibleFiles.map((file) => (
-                      <li key={`${file.jenis}-${file.href}`}>
-                        <a
-                          href={file.href}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex min-h-9 items-center justify-between gap-2 rounded-lg border border-[#d6e0da] px-3 py-2 text-xs font-medium text-[#345248] hover:bg-[#f5faf7]"
-                        >
+                    {visibleFiles.map((file) => {
+                      const fileContent = (
+                        <>
                           <span className="truncate">{file.label}</span>
                           <span className="shrink-0 rounded-full bg-[#ffe6ea] px-2 py-0.5 text-[9px] font-bold text-[#ac4154]">
                             PDF
                           </span>
-                        </a>
-                      </li>
-                    ))}
+                        </>
+                      );
+                      const fileClassName =
+                        "flex min-h-9 items-center justify-between gap-2 rounded-lg border border-[#d6e0da] px-3 py-2 text-xs font-medium text-[#345248] hover:bg-[#f5faf7]";
+                      return (
+                        <li key={`${file.jenis}-${file.href}`}>
+                          {role === "juri" ? (
+                            <Link
+                              href={`/juri/karya/${item.karya.id}`}
+                              className={fileClassName}
+                            >
+                              {fileContent}
+                            </Link>
+                          ) : (
+                            <a
+                              href={file.href}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={fileClassName}
+                            >
+                              {fileContent}
+                            </a>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               </li>
@@ -751,6 +840,251 @@ function KaryaCategoryListContent({
           )}
         </ul>
       </section>
+
+      {role === "juri" &&
+        statusPanelKaryaId &&
+        (() => {
+          const panelItem = items.find(
+            ({ karya: work }) => work.id === statusPanelKaryaId,
+          );
+          if (!panelItem) {
+            return null;
+          }
+          const panelWorkId = panelItem.karya.id;
+          const panelHistory = workflowData.reviewHistory.filter(
+            (entry) => entry.karyaId === panelWorkId,
+          );
+          const workStatusHistory = historyByKarya?.[panelWorkId] ?? [];
+          const activeJudgeIsOfficial = workflowData.judges.some(
+            (judge) => judge.id === juriAktif?.id,
+          );
+
+          return (
+            <div className="fixed inset-0 z-50 flex justify-end bg-[#18352d]/35">
+              <button
+                type="button"
+                aria-label="Tutup sidebar status tinjauan"
+                onClick={() => {
+                  setReviewStatusError("");
+                  setStatusPanelKaryaId(null);
+                }}
+                className="absolute inset-0 cursor-default"
+              />
+              <aside
+                id="jury-review-status-panel"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="jury-review-status-title"
+                tabIndex={-1}
+                className="relative z-10 h-full w-full max-w-[480px] overflow-y-auto bg-white p-5 shadow-2xl sm:p-7"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-medium text-[#84918b]">
+                      Status tinjauan
+                    </p>
+                    <h2
+                      id="jury-review-status-title"
+                      className="mt-1 text-lg font-bold text-[#24453b]"
+                    >
+                      {panelItem.peserta.nama}
+                    </h2>
+                    <p className="mt-1 text-sm text-[#84918b]">
+                      {panelItem.peserta.asal}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Tutup panel status tinjauan"
+                    onClick={() => {
+                      setReviewStatusError("");
+                      setStatusPanelKaryaId(null);
+                    }}
+                    className="rounded-lg border border-[#dfe6e2] px-3 py-2 text-sm text-[#465e56] hover:bg-[#f6f8f7]"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <section className="mt-6 border-t border-[#e8eeea] pt-5">
+                  <h3 className="text-sm font-bold text-[#29463d]">
+                    Status Juri 1 dan Juri 2
+                  </h3>
+                  <p className="mt-1 text-xs text-[#84918b]">
+                    Kamu hanya dapat mengubah status tinjauan akunmu sendiri.
+                  </p>
+                  {!activeJudgeIsOfficial && (
+                    <p
+                      role="alert"
+                      className="mt-3 rounded-lg bg-[#fff7e7] px-3 py-2 text-xs text-[#85520d]"
+                    >
+                      Akun ini tidak termasuk dalam daftar juri resmi kategori
+                      ini.
+                    </p>
+                  )}
+                  <ul className="mt-3 space-y-2">
+                    {workflowData.judges.map((judge) => {
+                      const judgeStatus = getReviewStatus(
+                        panelWorkId,
+                        judge.id,
+                      );
+                      const review = workflowData.reviews.find(
+                        (entry) =>
+                          entry.karyaId === panelWorkId &&
+                          entry.juriId === judge.id,
+                      );
+                      const ownStatus = judge.id === juriAktif?.id;
+                      const statusTime =
+                        judgeStatus === "sudah"
+                          ? review?.selesaiPada
+                          : judgeStatus === "sedang"
+                            ? review?.terakhirAktif
+                            : null;
+
+                      return (
+                        <li
+                          key={judge.id}
+                          className="rounded-lg border border-[#e2e9e5] bg-white px-3 py-3"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-xs font-semibold text-[#345248]">
+                              {judge.nama}
+                              {ownStatus ? " (Anda)" : ""}
+                            </span>
+                            {!ownStatus || !activeJudgeIsOfficial ? (
+                              <span className="text-xs text-[#52766a]">
+                                {getJuriReviewStatusLabel(judgeStatus)}
+                              </span>
+                            ) : null}
+                          </div>
+                          {ownStatus && activeJudgeIsOfficial && (
+                            <select
+                              aria-label={`Status tinjauan ${judge.nama}`}
+                              value={judgeStatus}
+                              disabled={savingReviewStatusId === panelWorkId}
+                              onChange={(event) =>
+                                void saveReviewStatus(
+                                  panelWorkId,
+                                  event.target.value as JuriReviewStatus,
+                                )
+                              }
+                              className="mt-2 h-9 w-full rounded-lg border border-[#dfe6e2] bg-white px-3 text-xs font-semibold text-[#345248] outline-none focus:border-[#6b9b86] focus:ring-2 focus:ring-[#6b9b86]/15 disabled:opacity-60"
+                            >
+                              <option value="belum">Belum ditinjau</option>
+                              <option value="sedang">Sedang ditinjau</option>
+                              <option value="sudah">Sudah ditinjau</option>
+                            </select>
+                          )}
+                          {statusTime && (
+                            <p className="mt-1 text-[11px] text-[#84918b]">
+                              {judgeStatus === "sudah"
+                                ? "Selesai"
+                                : "Aktif terakhir"}{" "}
+                              {formatWaktu(statusTime)}
+                            </p>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {savingReviewStatusId === panelWorkId && (
+                    <p role="status" className="mt-2 text-xs text-[#84918b]">
+                      Menyimpan status...
+                    </p>
+                  )}
+                  {reviewStatusError && (
+                    <p
+                      role="alert"
+                      className="mt-3 rounded-lg bg-[#fff0f0] px-3 py-2 text-xs text-[#a33340]"
+                    >
+                      {reviewStatusError}
+                    </p>
+                  )}
+                </section>
+
+                <section className="mt-6 border-t border-[#e8eeea] pt-5">
+                  <h3 className="text-sm font-bold text-[#29463d]">
+                    Riwayat tinjauan juri
+                  </h3>
+                  <div className="mt-3 max-h-60 overflow-y-auto overscroll-contain">
+                    {panelHistory.length === 0 ? (
+                      <p className="text-xs text-[#84918b]">
+                        Belum ada perubahan status tinjauan.
+                      </p>
+                    ) : (
+                      <ol className="space-y-2">
+                        {panelHistory.map((entry) => (
+                          <li
+                            key={entry.id}
+                            className="rounded-md bg-[#f7faf8] px-3 py-2 text-xs text-[#52766a]"
+                          >
+                            <span className="font-semibold">
+                              {entry.juriNama}
+                            </span>{" "}
+                            mengubah status dari{" "}
+                            <span className="font-semibold">
+                              {getJuriReviewStatusLabel(entry.statusLama)}
+                            </span>{" "}
+                            menjadi{" "}
+                            <span className="font-semibold">
+                              {getJuriReviewStatusLabel(entry.statusBaru)}
+                            </span>
+                            <time
+                              className="mt-1 block text-[11px] text-[#84918b]"
+                              dateTime={entry.waktu}
+                            >
+                              {formatWaktu(entry.waktu)}
+                            </time>
+                          </li>
+                        ))}
+                      </ol>
+                    )}
+                  </div>
+                </section>
+
+                <section className="mt-6 border-t border-[#e8eeea] pt-5">
+                  <h3 className="text-sm font-bold text-[#29463d]">
+                    Riwayat status karya oleh panitia
+                  </h3>
+                  <div className="mt-3 max-h-60 overflow-y-auto overscroll-contain">
+                    {workStatusHistory.length === 0 ? (
+                      <p className="text-xs text-[#84918b]">
+                        Belum ada perubahan status karya.
+                      </p>
+                    ) : (
+                      <ol className="space-y-2">
+                        {workStatusHistory.map((entry) => (
+                          <li
+                            key={entry.id}
+                            className="rounded-md bg-[#f7faf8] px-3 py-2 text-xs text-[#52766a]"
+                          >
+                            <span className="font-semibold">
+                              {entry.panitia.nama}
+                            </span>{" "}
+                            mengubah status dari{" "}
+                            <span className="font-semibold">
+                              {getStatusLabel(entry.status_lama)}
+                            </span>{" "}
+                            menjadi{" "}
+                            <span className="font-semibold">
+                              {getStatusLabel(entry.status_baru)}
+                            </span>
+                            <time
+                              className="mt-1 block text-[11px] text-[#84918b]"
+                              dateTime={entry.waktu}
+                            >
+                              {formatWaktu(entry.waktu)}
+                            </time>
+                          </li>
+                        ))}
+                      </ol>
+                    )}
+                  </div>
+                </section>
+              </aside>
+            </div>
+          );
+        })()}
     </main>
   );
 }

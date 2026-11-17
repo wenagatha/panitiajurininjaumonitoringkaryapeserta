@@ -4,7 +4,11 @@ import { requireStaffRole, type StaffRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { KaryaDaftarItem } from "@/components/dashboard/KaryaCategoryList";
 import type { PanitiaRiwayatStatus } from "@/lib/panitia-actions";
-import type { KategoriLomba, StatusKarya } from "@/types/karya";
+import type {
+  JuriReviewStatus,
+  KategoriLomba,
+  StatusKarya,
+} from "@/types/karya";
 
 export type JuriSelection = {
   karyaId: string;
@@ -44,12 +48,23 @@ export type JuriReview = {
   selesaiPada: string | null;
 };
 
+export type JuriReviewHistory = {
+  id: string;
+  karyaId: string;
+  juriId: string;
+  juriNama: string;
+  statusLama: JuriReviewStatus;
+  statusBaru: JuriReviewStatus;
+  waktu: string;
+};
+
 export type JuriWorkflowSnapshot = {
   judges: { id: string; nama: string }[];
   selections: JuriSelection[];
   ranks: JuriRank[];
   history: JuriHistory[];
   reviews: JuriReview[];
+  reviewHistory: JuriReviewHistory[];
 };
 
 type ParticipantRow = {
@@ -211,6 +226,18 @@ function parseProfile(value: unknown): { id: string; nama: string } {
   return { id: value.id, nama: value.nama };
 }
 
+function belongsToOfficialJudge(
+  value: unknown,
+  field: "juri_id" | "ditetapkan_oleh",
+  judgeIds: ReadonlySet<string>,
+): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+  const judgeId = value[field];
+  return typeof judgeId === "string" && judgeIds.has(judgeId);
+}
+
 function parseSelection(value: unknown): JuriSelection {
   if (!isRecord(value) || typeof value.karya_id !== "string" || typeof value.juri_id !== "string" || typeof value.ditandai_pada !== "string") {
     throw new Error("Data pilihan kandidat juri tidak valid.");
@@ -303,6 +330,33 @@ function parseReview(value: unknown): JuriReview {
   };
 }
 
+function isJuriReviewStatus(value: unknown): value is JuriReviewStatus {
+  return value === "belum" || value === "sedang" || value === "sudah";
+}
+
+function parseReviewHistory(value: unknown): JuriReviewHistory {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    typeof value.karya_id !== "string" ||
+    typeof value.juri_id !== "string" ||
+    !isJuriReviewStatus(value.status_lama) ||
+    !isJuriReviewStatus(value.status_baru) ||
+    typeof value.waktu !== "string"
+  ) {
+    throw new Error("Riwayat tinjauan juri Supabase tidak valid.");
+  }
+  return {
+    id: value.id,
+    karyaId: value.karya_id,
+    juriId: value.juri_id,
+    juriNama: parseProfile(value.juri).nama,
+    statusLama: value.status_lama,
+    statusBaru: value.status_baru,
+    waktu: value.waktu,
+  };
+}
+
 const WORK_SELECT =
   "id,peserta_id,status,alasan_penolakan,url_karya,url_pernyataan,peserta!inner(id,nama,asal,kategori,tanggal_daftar,url_kartu)";
 const PROFILE_RELATION = "juri:profiles!{table}_juri_id_fkey(id,nama)";
@@ -333,18 +387,29 @@ export async function getJuriWorkflowData(
   if (karyaIds.length === 0) {
     return {
       items,
-      workflow: { judges: [], selections: [], ranks: [], history: [], reviews: [] },
+      workflow: {
+        judges: [],
+        selections: [],
+        ranks: [],
+        history: [],
+        reviews: [],
+        reviewHistory: [],
+      },
       statusHistoryByKarya: {},
     };
   }
 
-  const [judgeResult, selectionResult, ranksResult, historyResult, reviewsResult, statusHistoryResult] =
+  const [
+    judgeResult,
+    selectionResult,
+    ranksResult,
+    historyResult,
+    reviewsResult,
+    reviewHistoryResult,
+    statusHistoryResult,
+  ] =
     await Promise.all([
-      supabase
-        .from("profiles")
-        .select("id,nama")
-        .eq("role", "juri")
-        .eq("kategori", kategori),
+      supabase.rpc("get_official_juri_profiles", { p_kategori: kategori }),
       supabase
         .from("pilihan_juri")
         .select(`karya_id,juri_id,ditandai_pada,${PROFILE_RELATION.replace("{table}", "pilihan_juri")}`)
@@ -363,6 +428,11 @@ export async function getJuriWorkflowData(
         .select(`karya_id,juri_id,status,mulai_pada,terakhir_aktif,selesai_pada,${PROFILE_RELATION.replace("{table}", "tinjauan_juri")}`)
         .in("karya_id", karyaIds),
       supabase
+        .from("riwayat_tinjauan_juri")
+        .select(`id,karya_id,juri_id,status_lama,status_baru,waktu,${PROFILE_RELATION.replace("{table}", "riwayat_tinjauan_juri")}`)
+        .in("karya_id", karyaIds)
+        .order("waktu", { ascending: false }),
+      supabase
         .from("riwayat_panitia")
         .select("id,karya_id,status_lama,status_baru,alasan_penolakan,waktu")
         .in("karya_id", karyaIds)
@@ -373,7 +443,7 @@ export async function getJuriWorkflowData(
     throw new Error(`Daftar juri kategori gagal dimuat: ${judgeResult.error.message}`);
   }
   if ((judgeResult.data ?? []).length === 0) {
-    throw new Error(`Profil juri kategori ${kategori} tidak ditemukan.`);
+    throw new Error(`Profil juri resmi kategori ${kategori} tidak ditemukan.`);
   }
 
   if (selectionResult.error) {
@@ -388,6 +458,9 @@ export async function getJuriWorkflowData(
   if (reviewsResult.error) {
     throw new Error(`Status tinjauan juri gagal dimuat: ${reviewsResult.error.message}`);
   }
+  if (reviewHistoryResult.error) {
+    throw new Error(`Riwayat tinjauan juri gagal dimuat: ${reviewHistoryResult.error.message}`);
+  }
   if (statusHistoryResult.error) {
     throw new Error(`Riwayat status karya gagal dimuat: ${statusHistoryResult.error.message}`);
   }
@@ -398,16 +471,41 @@ export async function getJuriWorkflowData(
     (statusHistoryByKarya[history.karyaId] ??= []).push(history.entry);
   }
 
+  const judges: { id: string; nama: string }[] = (judgeResult.data ?? []).map(
+    parseProfile,
+  );
+  const officialJudgeIds = new Set(judges.map(({ id }) => id));
+
   return {
     items,
     workflow: {
-      judges: (judgeResult.data ?? []).map(parseProfile),
-      selections: (selectionResult.data ?? []).map(parseSelection),
-      ranks: (ranksResult.data ?? []).map(parseRank),
+      judges,
+      selections: (selectionResult.data ?? [])
+        .filter((value) =>
+          belongsToOfficialJudge(value, "juri_id", officialJudgeIds),
+        )
+        .map(parseSelection),
+      ranks: (ranksResult.data ?? [])
+        .filter((value) =>
+          belongsToOfficialJudge(value, "ditetapkan_oleh", officialJudgeIds),
+        )
+        .map(parseRank),
       history: (historyResult.data ?? [])
+        .filter((value) =>
+          belongsToOfficialJudge(value, "juri_id", officialJudgeIds),
+        )
         .map(parseHistory)
         .filter((entry) => entry.karyaId),
-      reviews: (reviewsResult.data ?? []).map(parseReview),
+      reviews: (reviewsResult.data ?? [])
+        .filter((value) =>
+          belongsToOfficialJudge(value, "juri_id", officialJudgeIds),
+        )
+        .map(parseReview),
+      reviewHistory: (reviewHistoryResult.data ?? [])
+        .filter((value) =>
+          belongsToOfficialJudge(value, "juri_id", officialJudgeIds),
+        )
+        .map(parseReviewHistory),
     },
     statusHistoryByKarya,
   };
