@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { updatePanitiaKaryaStatus } from "@/lib/panitia-actions";
 import { getStatusLabel, getStatusStyle, STATUS_KARYA } from "@/lib/status";
 import { normalisasiWhatsApp } from "@/lib/normalisasi-whatsapp";
 import type { StatusKarya } from "@/types/karya";
@@ -26,12 +28,19 @@ export default function TabelPesertaKategori({
 }: {
   rows: PesertaKategoriRow[];
 }) {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<"semua" | StatusKarya>(
     "semua",
   );
   const [page, setPage] = useState(1);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [savingKaryaId, setSavingKaryaId] = useState<string | null>(null);
+  const [pendingRejectionId, setPendingRejectionId] = useState<string | null>(
+    null,
+  );
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [statusError, setStatusError] = useState("");
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
 
@@ -91,6 +100,9 @@ export default function TabelPesertaKategori({
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setSelectedId(null);
+        setPendingRejectionId(null);
+        setRejectionReason("");
+        setStatusError("");
         rowRefs.current.get(selectedId)?.focus();
       }
     };
@@ -105,6 +117,55 @@ export default function TabelPesertaKategori({
     if (selectedId) {
       rowRefs.current.get(selectedId)?.focus();
       setSelectedId(null);
+      setPendingRejectionId(null);
+      setRejectionReason("");
+      setStatusError("");
+    }
+  }
+
+  async function saveStatus(
+    karyaId: string,
+    status: StatusKarya,
+    reason?: string,
+  ): Promise<boolean> {
+    setStatusError("");
+    setSavingKaryaId(karyaId);
+    try {
+      await updatePanitiaKaryaStatus(karyaId, status, reason);
+      setPendingRejectionId(null);
+      setRejectionReason("");
+      router.refresh();
+      return true;
+    } catch (cause) {
+      setStatusError(
+        cause instanceof Error ? cause.message : "Status karya gagal disimpan.",
+      );
+      return false;
+    } finally {
+      setSavingKaryaId(null);
+    }
+  }
+
+  function handleStatusChange(karyaId: string, status: StatusKarya) {
+    setStatusError("");
+    if (status === "ditolak") {
+      setPendingRejectionId(karyaId);
+      setRejectionReason("");
+      return;
+    }
+    setPendingRejectionId(null);
+    setRejectionReason("");
+    void saveStatus(karyaId, status);
+  }
+
+  function markAsReviewedOnOpen(row: PesertaKategoriRow) {
+    if (
+      row.karya.status === "menunggu" &&
+      savingKaryaId !== row.karya.id
+    ) {
+      setPendingRejectionId(null);
+      setRejectionReason("");
+      void saveStatus(row.karya.id, "diproses");
     }
   }
 
@@ -346,15 +407,95 @@ export default function TabelPesertaKategori({
                 <dt className="text-xs text-[#84918b]">Status</dt>
                 <dd className="mt-1">
                   {(() => {
-                    const status = selectedRow.karya.status;
+                    const status =
+                      pendingRejectionId === selectedRow.karya.id
+                        ? "ditolak"
+                        : selectedRow.karya.status;
                     const style = getStatusStyle(status);
-                    return style ? (
-                      <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${style.badgeClass}`}>
-                        {getStatusLabel(status)}
-                      </span>
-                    ) : null;
+                    return (
+                      <select
+                        aria-label={`Status karya ${selectedRow.nama}`}
+                        value={status}
+                        disabled={savingKaryaId === selectedRow.karya.id}
+                        onChange={(event) =>
+                          handleStatusChange(
+                            selectedRow.karya.id,
+                            event.target.value as StatusKarya,
+                          )
+                        }
+                        className={`h-8 rounded-full border border-[#d6e0da] bg-white px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#6b9b86]/20 disabled:opacity-60 ${style?.badgeClass ?? ""}`}
+                      >
+                        {STATUS_KARYA.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {getStatusLabel(option.value)}
+                          </option>
+                        ))}
+                      </select>
+                    );
                   })()}
+                  {savingKaryaId === selectedRow.karya.id && (
+                    <span className="ml-2 text-xs text-[#84918b]">
+                      Menyimpan...
+                    </span>
+                  )}
                 </dd>
+                {pendingRejectionId === selectedRow.karya.id && (
+                  <div className="mt-3 rounded-lg border border-[#f1c7ce] bg-[#fff7f8] p-3">
+                    <label
+                      htmlFor="participant-rejection-reason"
+                      className="block text-xs font-semibold text-[#8b3443]"
+                    >
+                      Alasan penolakan (wajib)
+                    </label>
+                    <textarea
+                      id="participant-rejection-reason"
+                      value={rejectionReason}
+                      onChange={(event) =>
+                        setRejectionReason(event.target.value)
+                      }
+                      maxLength={1000}
+                      rows={3}
+                      required
+                      className="mt-2 w-full rounded-md border border-[#e4c4c9] bg-white px-3 py-2 text-xs text-[#354a42] outline-none focus:border-[#b85b6b] focus:ring-2 focus:ring-[#b85b6b]/15"
+                      placeholder="Jelaskan alasan karya ditolak..."
+                    />
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={
+                          savingKaryaId === selectedRow.karya.id ||
+                          rejectionReason.trim().length === 0
+                        }
+                        onClick={() =>
+                          void saveStatus(
+                            selectedRow.karya.id,
+                            "ditolak",
+                            rejectionReason,
+                          )
+                        }
+                        className="rounded-md bg-[#a33340] px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"
+                      >
+                        Simpan penolakan
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPendingRejectionId(null);
+                          setRejectionReason("");
+                          setStatusError("");
+                        }}
+                        className="rounded-md border border-[#d9c9cc] px-3 py-2 text-xs font-semibold text-[#6e5459]"
+                      >
+                        Batal
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {statusError && (
+                  <p role="alert" className="mt-2 text-xs text-[#a33340]">
+                    {statusError}
+                  </p>
+                )}
               </div>
             </dl>
 
@@ -384,6 +525,9 @@ export default function TabelPesertaKategori({
 
             <section className="mt-5">
               <h3 className="text-sm font-bold text-[#29463d]">Berkas</h3>
+              <p className="mt-1 text-xs text-[#84918b]">
+                Membuka berkas akan mengubah status Menunggu menjadi Ditinjau.
+              </p>
               <ul className="mt-3 space-y-2">
                 {[
                   {
@@ -408,6 +552,7 @@ export default function TabelPesertaKategori({
                         href={file.href}
                         target="_blank"
                         rel="noopener noreferrer"
+                        onClick={() => markAsReviewedOnOpen(selectedRow)}
                         className="block rounded-lg border border-[#d6e0da] px-3 py-3 text-sm font-medium text-[#345248] hover:bg-[#f5faf7]"
                       >
                         {file.label}

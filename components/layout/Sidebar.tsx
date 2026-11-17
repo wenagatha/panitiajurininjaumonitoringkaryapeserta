@@ -51,23 +51,6 @@ const ROLE_MENUS: ReadonlyArray<{ role: Role; groups: MenuGroup[] }> = [
               },
             ],
           },
-          {
-            label: "Daftar Karya Peserta",
-            href: "/panitia/karya",
-            icon: "document",
-            subItems: [
-              {
-                label: "Lomba Cerita HAM",
-                href: "/panitia/karya",
-                category: "cerita",
-              },
-              {
-                label: "Lomba Serial Komik Bergambar",
-                href: "/panitia/karya/komik",
-                category: "komik",
-              },
-            ],
-          },
         ],
       },
       {
