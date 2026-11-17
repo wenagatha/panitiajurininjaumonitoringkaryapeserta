@@ -11,10 +11,10 @@ export default async function PanitiaPesertaPage() {
           Monitoring &amp; Meninjau
         </p>
         <h1 className="mt-1 text-[22px] font-bold tracking-tight text-[#24453b]">
-          Daftar Peserta Cerita HAM
+          Daftar Peserta Buku Cerita HAM
         </h1>
         <p className="mt-1 text-xs text-[#84918b]">
-          Lihat peserta yang terdaftar pada lomba Cerita HAM.
+          Lihat peserta yang terdaftar pada lomba Buku Cerita HAM.
         </p>
       </header>
       <TabelPesertaKategori rows={rows} />
