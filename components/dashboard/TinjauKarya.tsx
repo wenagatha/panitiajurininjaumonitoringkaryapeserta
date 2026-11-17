@@ -98,10 +98,8 @@ function TinjauKaryaContent({
   const { notifikasi, tampilkanNotifikasi, tutupNotifikasi } = useNotifikasi();
   const kategoriJudul =
     item.peserta.kategori === "cerita"
-      ? "Cerita HAM"
-      : role === "juri"
-        ? "Komik Bergambar"
-        : "Lomba Komik Bergambar";
+      ? "Lomba Buku Cerita HAM"
+      : "Lomba Serial Komik Bergambar";
   const karyaBaseHref = role === "panitia" ? "/panitia/karya" : "/juri/karya";
   const backHref = readOnly
     ? role === "juri"

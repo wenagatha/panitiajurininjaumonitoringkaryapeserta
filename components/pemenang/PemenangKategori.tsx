@@ -67,7 +67,9 @@ export default function PemenangKategori({
 }: PemenangKategoriProps) {
   const [query, setQuery] = useState("");
   const judulKategori =
-    kategori === "cerita" ? "Cerita HAM" : "Komik Bergambar";
+    kategori === "cerita"
+      ? "Lomba Buku Cerita HAM"
+      : "Lomba Serial Komik Bergambar";
   const aturan = ATURAN_LOMBA[kategori];
   const itemByKaryaId = useMemo(
     () => new Map(items.map((item) => [item.karya.id, item])),

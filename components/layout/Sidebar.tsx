@@ -62,12 +62,12 @@ const ROLE_MENUS: ReadonlyArray<{ role: Role; groups: MenuGroup[] }> = [
             icon: "award",
             subItems: [
               {
-                label: "Cerita HAM",
+                label: "Lomba Buku Cerita HAM",
                 href: "/panitia/kandidat/cerita",
                 category: "cerita",
               },
               {
-                label: "Komik Bergambar",
+                label: "Lomba Serial Komik Bergambar",
                 href: "/panitia/kandidat/komik",
                 category: "komik",
               },
@@ -79,12 +79,12 @@ const ROLE_MENUS: ReadonlyArray<{ role: Role; groups: MenuGroup[] }> = [
             icon: "trophy",
             subItems: [
               {
-                label: "Cerita HAM",
+                label: "Lomba Buku Cerita HAM",
                 href: "/panitia/pemenang/cerita",
                 category: "cerita",
               },
               {
-                label: "Komik Bergambar",
+                label: "Lomba Serial Komik Bergambar",
                 href: "/panitia/pemenang/komik",
                 category: "komik",
               },
@@ -342,8 +342,8 @@ function JuriSidebarProfile() {
       </p>
       <p className="mt-0.5 text-[11px] text-[#87938f]">
         {juriAktif.kategori === "cerita"
-          ? "Juri Cerita HAM"
-          : "Juri Komik Bergambar"}
+          ? "Juri Lomba Buku Cerita HAM"
+          : "Juri Lomba Serial Komik Bergambar"}
       </p>
       <form action={signOutAction}>
         <button

@@ -38,7 +38,9 @@ function formatWaktu(waktu: string): string {
 }
 
 function labelLomba(kategori: PesertaKategoriRow["kategori"]): string {
-  return kategori === "cerita" ? "Cerita HAM" : "Komik Bergambar";
+  return kategori === "cerita"
+    ? "Lomba Buku Cerita HAM"
+    : "Lomba Serial Komik Bergambar";
 }
 
 export default function TabelPesertaKategori({

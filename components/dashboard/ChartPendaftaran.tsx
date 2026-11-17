@@ -11,8 +11,8 @@ const BARS: ReadonlyArray<{
   label: string;
   className: string;
 }> = [
-  { kategori: "cerita", label: "Lomba Cerita", className: "bg-[#245c4f]" },
-  { kategori: "komik", label: "Lomba Komik", className: "bg-[#e9a16f]" },
+  { kategori: "cerita", label: "Lomba Buku Cerita HAM", className: "bg-[#245c4f]" },
+  { kategori: "komik", label: "Lomba Serial Komik Bergambar", className: "bg-[#e9a16f]" },
 ];
 
 export default function ChartPendaftaran({

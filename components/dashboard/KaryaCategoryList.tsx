@@ -278,10 +278,8 @@ function KaryaCategoryListContent({
 
   const kategoriJudul =
     kategori === "cerita"
-      ? "Cerita HAM"
-      : role === "juri"
-        ? "Komik Bergambar"
-        : "Lomba Komik Bergambar";
+      ? "Lomba Buku Cerita HAM"
+      : "Lomba Serial Komik Bergambar";
   const labelKarya = kategori === "cerita" ? "BUKU CERITA" : "KOMIK BERGAMBAR";
   const hasDemoFiles = role === "panitia" && visibleItems.some((item) =>
     item.berkas.some((file) => file.isDemo),

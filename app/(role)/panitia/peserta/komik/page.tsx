@@ -11,10 +11,10 @@ export default async function PanitiaPesertaKomikPage() {
           Monitoring &amp; Meninjau
         </p>
         <h1 className="mt-1 text-[22px] font-bold tracking-tight text-[#24453b]">
-          Daftar Karya Peserta Lomba Komik Bergambar
+          Daftar Karya Peserta Lomba Serial Komik Bergambar
         </h1>
         <p className="mt-1 text-xs text-[#84918b]">
-          Lihat peserta yang terdaftar pada lomba Komik Bergambar.
+          Lihat peserta yang terdaftar pada Lomba Serial Komik Bergambar.
         </p>
       </header>
       <TabelPesertaKategori rows={rows} />
