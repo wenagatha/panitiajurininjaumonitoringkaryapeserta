@@ -11,7 +11,7 @@ export default async function PanitiaPesertaKomikPage() {
           Monitoring &amp; Meninjau
         </p>
         <h1 className="mt-1 text-[22px] font-bold tracking-tight text-[#24453b]">
-          Daftar Peserta Lomba Komik Bergambar
+          Daftar Karya Peserta Lomba Komik Bergambar
         </h1>
         <p className="mt-1 text-xs text-[#84918b]">
           Lihat peserta yang terdaftar pada lomba Komik Bergambar.
