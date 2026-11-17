@@ -7,7 +7,11 @@ import {
   updatePanitiaKaryaStatus,
   type PanitiaRiwayatStatus,
 } from "@/lib/panitia-actions";
-import { getStatusLabel, getStatusStyle, STATUS_KARYA } from "@/lib/status";
+import {
+  getStatusLabel,
+  getStatusStyle,
+  STATUS_KARYA_TANPA_MENUNGGU,
+} from "@/lib/status";
 import { normalisasiWhatsApp } from "@/lib/normalisasi-whatsapp";
 import type { StatusKarya } from "@/types/karya";
 import type { PesertaKategoriRow } from "@/types/peserta-dashboard";
@@ -244,7 +248,6 @@ export default function TabelPesertaKategori({
 
   const statCards = [
     { key: "total", label: "Total peserta", color: "#00a477" },
-    { key: "menunggu", label: "Menunggu", color: "#f2c96d" },
     { key: "diproses", label: "Ditinjau", color: "#69a9ee" },
     { key: "diverifikasi", label: "Diverifikasi", color: "#245c4f" },
     { key: "ditolak", label: "Ditolak", color: "#e86d79" },
@@ -252,7 +255,7 @@ export default function TabelPesertaKategori({
 
   return (
     <>
-      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
         {statCards.map((card) => (
           <div
             key={card.key}
@@ -308,7 +311,7 @@ export default function TabelPesertaKategori({
             className="h-10 rounded-lg border border-[#dfe6e2] bg-white px-3 text-xs text-[#42564e] outline-none focus:border-[#6b9b86] focus:ring-2 focus:ring-[#6b9b86]/15"
           >
             <option value="semua">Semua status</option>
-            {STATUS_KARYA.map((status) => (
+            {STATUS_KARYA_TANPA_MENUNGGU.map((status) => (
               <option key={status.value} value={status.value}>
                 {getStatusLabel(status.value)}
               </option>
@@ -385,7 +388,7 @@ export default function TabelPesertaKategori({
                       {formatTanggal(row.tanggalDaftar)}
                     </td>
                     <td className="px-2 py-3">
-                      {statusStyle && (
+                      {status !== "menunggu" && statusStyle && (
                         <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ${statusStyle.badgeClass}`}>
                           {getStatusLabel(status)}
                         </span>
@@ -488,7 +491,7 @@ export default function TabelPesertaKategori({
                     return (
                       <select
                         aria-label={`Status karya ${selectedRow.nama}`}
-                        value={status}
+                        value={status === "menunggu" ? "" : status}
                         disabled={savingKaryaId === selectedRow.karya.id}
                         onChange={(event) =>
                           handleStatusChange(
@@ -498,7 +501,12 @@ export default function TabelPesertaKategori({
                         }
                         className={`h-8 rounded-full border border-[#d6e0da] bg-white px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#6b9b86]/20 disabled:opacity-60 ${style?.badgeClass ?? ""}`}
                       >
-                        {STATUS_KARYA.map((option) => (
+                        {status === "menunggu" && (
+                          <option value="" disabled>
+                            Pilih status
+                          </option>
+                        )}
+                        {STATUS_KARYA_TANPA_MENUNGGU.map((option) => (
                           <option key={option.value} value={option.value}>
                             {getStatusLabel(option.value)}
                           </option>
@@ -601,7 +609,7 @@ export default function TabelPesertaKategori({
                     {historyErrors[selectedRow.karya.id]}
                   </p>
                 ) : historyByKarya[selectedRow.karya.id]?.length ? (
-                  <ol className="mt-3 space-y-3">
+                  <ol className="mt-3 max-h-64 space-y-3 overflow-y-auto pr-2">
                     {historyByKarya[selectedRow.karya.id].map((entry) => (
                       <li
                         key={entry.id}
@@ -663,7 +671,7 @@ export default function TabelPesertaKategori({
             <section className="mt-5">
               <h3 className="text-sm font-bold text-[#29463d]">Berkas</h3>
               <p className="mt-1 text-xs text-[#84918b]">
-                Membuka berkas akan mengubah status Menunggu menjadi Ditinjau.
+                Membuka berkas akan mengubah status awal menjadi Ditinjau.
               </p>
               <ul className="mt-3 space-y-2">
                 {[

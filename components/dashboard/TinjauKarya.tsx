@@ -4,7 +4,11 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatTanggal } from "@/lib/format-tanggal";
-import { getStatusLabel, getStatusStyle, STATUS_KARYA } from "@/lib/status";
+import {
+  getStatusLabel,
+  getStatusStyle,
+  STATUS_KARYA_TANPA_MENUNGGU,
+} from "@/lib/status";
 import {
   updatePanitiaKaryaStatus,
   type PanitiaRiwayatStatus,
@@ -367,11 +371,13 @@ function TinjauKaryaContent({
           <Notifikasi notifikasi={notifikasi} onClose={tutupNotifikasi} />
         )}
         <div className="rounded-lg border border-[#dce5e0] bg-white p-5">
-          <span
-            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyle?.badgeClass ?? ""}`}
-          >
-            {getStatusLabel(status)}
-          </span>
+          {status !== "menunggu" && (
+            <span
+              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyle?.badgeClass ?? ""}`}
+            >
+              {getStatusLabel(status)}
+            </span>
+          )}
           <p className="text-sm text-[#84918b]">
             Karya ini tidak tersedia untuk ditinjau juri.
           </p>
@@ -459,11 +465,13 @@ function TinjauKaryaContent({
             <div>
               <dt className="text-xs text-[#84918b]">Status saat ini</dt>
               <dd className="mt-1">
-                {statusStyle && (
+                {status === "menunggu" ? (
+                  "—"
+                ) : statusStyle ? (
                   <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyle.badgeClass}`}>
                     {getStatusLabel(status)}
                   </span>
-                )}
+                ) : null}
               </dd>
             </div>
           </dl>
@@ -530,8 +538,8 @@ function TinjauKaryaContent({
                 Keputusan tinjauan
               </h2>
               <p className="mt-1 text-xs text-[#84918b]">
-                Saat karya dibuka untuk ditinjau, status Menunggu otomatis
-                menjadi Diproses.
+                Saat karya dibuka untuk ditinjau, status awal otomatis menjadi
+                Ditinjau.
               </p>
               <div className="mt-3 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
                 <label className="sr-only" htmlFor={`decision-${item.karya.id}`}>
@@ -539,7 +547,7 @@ function TinjauKaryaContent({
                 </label>
                 <select
                   id={`decision-${item.karya.id}`}
-                  value={draftStatus}
+                  value={draftStatus === "menunggu" ? "" : draftStatus}
                   onChange={(event) => {
                     const nextStatus = event.target.value as StatusKarya;
                     if (nextStatus === "ditolak" && draftStatus !== "ditolak") {
@@ -550,7 +558,12 @@ function TinjauKaryaContent({
                   }}
                   className="h-10 w-full rounded-lg border border-[#e0b349] bg-[#fffaf0] px-3 text-xs font-semibold text-[#85520d] outline-none focus:ring-2 focus:ring-[#f0c458]/30 sm:max-w-[350px]"
                 >
-                  {STATUS_KARYA.map((option) => (
+                  {draftStatus === "menunggu" && (
+                    <option value="" disabled>
+                      Pilih status
+                    </option>
+                  )}
+                  {STATUS_KARYA_TANPA_MENUNGGU.map((option) => (
                     <option key={option.value} value={option.value}>
                       {getStatusLabel(option.value)}
                     </option>

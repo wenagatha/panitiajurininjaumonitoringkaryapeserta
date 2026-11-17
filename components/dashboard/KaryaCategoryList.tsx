@@ -2,7 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getStatusLabel, getStatusStyle, STATUS_KARYA } from "@/lib/status";
+import {
+  getStatusLabel,
+  getStatusStyle,
+  STATUS_KARYA_TANPA_MENUNGGU,
+} from "@/lib/status";
 import type { BerkasKarya } from "@/lib/berkas-demo";
 import {
   updatePanitiaKaryaStatus,
@@ -322,7 +326,6 @@ function KaryaCategoryListContent({
         ]
       : [
           { key: "total", label: "Total data karya", value: counts.total, color: "#00a477" },
-          { key: "menunggu", label: "Menunggu", value: counts.menunggu, color: "#5596e8" },
           { key: "diproses", label: "Ditinjau", value: counts.diproses, color: "#f39a00" },
           { key: "diverifikasi", label: "Diverifikasi", value: counts.diverifikasi, color: "#00a477" },
           { key: "ditolak", label: "Ditolak", value: counts.ditolak, color: "#f04773" },
@@ -351,7 +354,7 @@ function KaryaCategoryListContent({
         </p>
       )}
 
-      <div className={`mb-4 grid grid-cols-2 gap-3 ${role === "juri" ? "sm:grid-cols-4" : "sm:grid-cols-3 xl:grid-cols-5"}`}>
+      <div className={`mb-4 grid grid-cols-2 gap-3 ${role === "juri" ? "sm:grid-cols-4" : "sm:grid-cols-3 xl:grid-cols-4"}`}>
         {statusCards.map((card) => (
           <div
             key={card.key}
@@ -411,7 +414,7 @@ function KaryaCategoryListContent({
                 className="h-10 rounded-lg border border-[#dfe6e2] bg-white px-3 text-xs text-[#42564e] outline-none focus:border-[#6b9b86] focus:ring-2 focus:ring-[#6b9b86]/15"
               >
                 <option value="semua">Semua status</option>
-                {STATUS_KARYA.map((status) => (
+                {STATUS_KARYA_TANPA_MENUNGGU.map((status) => (
                   <option key={status.value} value={status.value}>
                     {getStatusLabel(status.value)}
                   </option>
@@ -520,7 +523,13 @@ function KaryaCategoryListContent({
                           </label>
                           <select
                             id={`status-${item.karya.id}`}
-                            value={status}
+                            value={
+                              pendingRejectionId === item.karya.id
+                                ? "ditolak"
+                                : status === "menunggu"
+                                  ? ""
+                                  : status
+                            }
                             disabled={savingKaryaId === item.karya.id}
                             onChange={(event) => {
                                 const nextStatus = event.target.value as StatusKarya;
@@ -534,7 +543,12 @@ function KaryaCategoryListContent({
                               }}
                             className={`h-8 rounded-full border border-[#f0c458] bg-[#fffaf0] px-3 text-xs font-semibold text-[#85520d] outline-none focus:ring-2 focus:ring-[#f0c458]/30 ${statusStyle?.badgeClass ?? ""}`}
                           >
-                            {STATUS_KARYA.map((option) => (
+                            {status === "menunggu" && (
+                              <option value="" disabled>
+                                Pilih status
+                              </option>
+                            )}
+                            {STATUS_KARYA_TANPA_MENUNGGU.map((option) => (
                               <option key={option.value} value={option.value}>
                                 {getStatusLabel(option.value)}
                               </option>

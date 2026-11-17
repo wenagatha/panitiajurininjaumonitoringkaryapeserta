@@ -1,8 +1,10 @@
-import { STATUS_KARYA, getStatusLabel } from "@/lib/status";
+import {
+  STATUS_KARYA_TANPA_MENUNGGU,
+  getStatusLabel,
+} from "@/lib/status";
 import type { StatusKarya } from "@/types/karya";
 
 type DonutStatusProps = {
-  total: number;
   counts: Record<StatusKarya, number>;
 };
 
@@ -36,10 +38,14 @@ function getSegmentPath(startAngle: number, endAngle: number) {
   ].join(" ");
 }
 
-export default function DonutStatus({ total, counts }: DonutStatusProps) {
+export default function DonutStatus({ counts }: DonutStatusProps) {
+  const total = STATUS_KARYA_TANPA_MENUNGGU.reduce(
+    (sum, status) => sum + counts[status.value],
+    0,
+  );
   let currentAngle = -90;
   const segments = total > 0
-    ? STATUS_KARYA.flatMap((status) => {
+    ? STATUS_KARYA_TANPA_MENUNGGU.flatMap((status) => {
         const count = counts[status.value];
         const angle = (count / total) * 360;
         if (count <= 0 || angle <= 0) {
@@ -55,11 +61,13 @@ export default function DonutStatus({ total, counts }: DonutStatusProps) {
   return (
     <section className="min-h-[360px] rounded-xl border border-[#dce5e0] border-t-[3px] border-t-[#e9a16f] bg-white p-5 shadow-[0_2px_8px_rgba(27,61,49,0.035)] sm:p-6">
       <h2 className="text-sm font-bold text-[#29463d]">Status karya</h2>
-      <p className="mt-1 text-xs text-[#8a9691]">Status seluruh karya peserta</p>
+      <p className="mt-1 text-xs text-[#8a9691]">
+        Status karya yang sudah ditinjau atau diputuskan
+      </p>
       <div className="mt-3 flex flex-col items-center gap-4 sm:mt-6 sm:grid sm:grid-cols-2 sm:items-center sm:gap-6">
         <div
           role="img"
-          aria-label={`Donut status karya, total ${total} karya`}
+          aria-label={`Donut status karya yang ditinjau atau sudah diputuskan, total ${total} karya`}
           className="relative size-[210px] shrink-0 sm:justify-self-center"
         >
           <svg viewBox="0 0 160 160" className="size-full">
@@ -99,7 +107,7 @@ export default function DonutStatus({ total, counts }: DonutStatusProps) {
           </div>
         </div>
         <ul className="w-fit space-y-3 sm:justify-self-center">
-          {STATUS_KARYA.map((status) => (
+          {STATUS_KARYA_TANPA_MENUNGGU.map((status) => (
             <li
               key={status.value}
               className="grid grid-cols-[160px_28px] items-center gap-3 text-sm"

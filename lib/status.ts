@@ -32,6 +32,10 @@ export const STATUS_KARYA: ReadonlyArray<{
   },
 ];
 
+export const STATUS_KARYA_TANPA_MENUNGGU = STATUS_KARYA.filter(
+  (status) => status.value !== "menunggu",
+);
+
 export const STATUS_LABEL: Readonly<Record<StatusKarya, string>> = {
   menunggu: "Menunggu",
   diproses: "Ditinjau",

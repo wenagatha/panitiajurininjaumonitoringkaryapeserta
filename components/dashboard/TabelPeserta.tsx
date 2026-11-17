@@ -109,7 +109,7 @@ export default function TabelPeserta({
                     {formatTanggal(row.tanggalDaftar)}
                   </td>
                   <td className="px-2 py-3">
-                    {statusStyle && (
+                    {status !== "menunggu" && statusStyle && (
                       <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ${statusStyle.badgeClass}`}>
                         {getStatusLabel(status)}
                       </span>

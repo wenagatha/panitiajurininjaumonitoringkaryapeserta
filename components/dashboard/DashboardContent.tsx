@@ -7,7 +7,11 @@ import StatCard, {
   type FilterKategori,
 } from "@/components/dashboard/StatCard";
 import TabelPeserta from "@/components/dashboard/TabelPeserta";
-import { STATUS_KARYA, getStatusLabel } from "@/lib/status";
+import {
+  STATUS_KARYA,
+  STATUS_KARYA_TANPA_MENUNGGU,
+  getStatusLabel,
+} from "@/lib/status";
 import type {
   KategoriLomba,
   PesertaDashboardRingkas,
@@ -21,7 +25,7 @@ type DashboardContentProps = {
 const STATUS_CARDS: ReadonlyArray<{
   status: StatusKarya;
   label: string;
-}> = STATUS_KARYA.map((status) => ({
+}> = STATUS_KARYA_TANPA_MENUNGGU.map((status) => ({
   status: status.value,
   label: getStatusLabel(status.value),
 }));
@@ -69,7 +73,7 @@ export default function DashboardContent({
 
   return (
     <>
-      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
         {statCards.map((card) => (
           <StatCard
             key={card.title}
@@ -87,7 +91,7 @@ export default function DashboardContent({
           komik={countsByCategory.komik}
           total={filteredParticipants.length}
         />
-        <DonutStatus total={filteredWorks.length} counts={countsByStatus} />
+        <DonutStatus counts={countsByStatus} />
       </div>
 
       <TabelPeserta rows={rows} />

@@ -35,7 +35,7 @@ const ROLE_MENUS: ReadonlyArray<{ role: Role; groups: MenuGroup[] }> = [
         items: [
           { label: "Dashboard", href: "/panitia", icon: "dashboard" },
           {
-            label: "Daftar Peserta",
+            label: "Daftar Karya Peserta",
             href: "/panitia/peserta/cerita",
             icon: "people",
             subItems: [
