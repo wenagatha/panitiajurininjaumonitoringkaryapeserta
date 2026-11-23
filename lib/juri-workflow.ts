@@ -334,6 +334,20 @@ function isJuriReviewStatus(value: unknown): value is JuriReviewStatus {
   return value === "belum" || value === "sedang" || value === "sudah";
 }
 
+function isMissingReviewHistoryRelation(error: unknown): boolean {
+  if (!isRecord(error)) {
+    return false;
+  }
+  const code = typeof error.code === "string" ? error.code : "";
+  const message = typeof error.message === "string" ? error.message : "";
+  return (
+    code === "PGRST205" ||
+    code === "42P01" ||
+    (message.includes("riwayat_tinjauan_juri") &&
+      (message.includes("Could not find") || message.includes("does not exist")))
+  );
+}
+
 function parseReviewHistory(value: unknown): JuriReviewHistory {
   if (
     !isRecord(value) ||
@@ -458,7 +472,14 @@ export async function getJuriWorkflowData(
   if (reviewsResult.error) {
     throw new Error(`Status tinjauan juri gagal dimuat: ${reviewsResult.error.message}`);
   }
-  if (reviewHistoryResult.error) {
+  if (
+    reviewHistoryResult.error &&
+    isMissingReviewHistoryRelation(reviewHistoryResult.error)
+  ) {
+    console.warn(
+      "Patch riwayat tinjauan juri belum diterapkan atau schema cache Supabase belum diperbarui.",
+    );
+  } else if (reviewHistoryResult.error) {
     throw new Error(`Riwayat tinjauan juri gagal dimuat: ${reviewHistoryResult.error.message}`);
   }
   if (statusHistoryResult.error) {
